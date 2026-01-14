@@ -1,0 +1,364 @@
+"""DuckDB storage for tabular data with thread/user isolation."""
+
+from pathlib import Path
+from typing import Any
+
+import duckdb
+
+from cassey.config import settings
+from cassey.storage.file_sandbox import get_thread_id
+from cassey.storage.user_registry import sanitize_thread_id
+
+
+class DuckDBStorage:
+    """
+    DuckDB storage for tabular data.
+
+    Each thread has its own isolated DuckDB database file.
+    Supports thread/user separation and merge/remove operations.
+    """
+
+    def __init__(self, root: Path | None = None) -> None:
+        """
+        Initialize DuckDB storage.
+
+        Args:
+            root: Root directory for DuckDB database files.
+        """
+        self.root = (root or settings.DUCKDB_ROOT).resolve()
+        self.root.mkdir(parents=True, exist_ok=True)
+
+    def _get_db_path(self, thread_id: str | None = None) -> Path:
+        """
+        Get the DuckDB database path for a thread.
+
+        Args:
+            thread_id: Thread identifier. If None, uses current context thread_id.
+
+        Returns:
+            Path to the DuckDB database file.
+        """
+        if thread_id is None:
+            thread_id = get_thread_id()
+
+        if thread_id is None:
+            raise ValueError("No thread_id provided and no thread_id in context")
+
+        # Sanitize thread_id for filename
+        safe_thread_id = sanitize_thread_id(thread_id)
+        return self.root / f"{safe_thread_id}.db"
+
+    def get_connection(self, thread_id: str | None = None) -> duckdb.DuckDBPyConnection:
+        """
+        Get a DuckDB connection for the current thread.
+
+        Args:
+            thread_id: Thread identifier. If None, uses current context thread_id.
+
+        Returns:
+            DuckDB connection object.
+        """
+        db_path = self._get_db_path(thread_id)
+        return duckdb.connect(str(db_path))
+
+    def execute(self, query: str, thread_id: str | None = None) -> list[tuple]:
+        """
+        Execute a SQL query and return results.
+
+        Args:
+            query: SQL query to execute.
+            thread_id: Thread identifier. If None, uses current context thread_id.
+
+        Returns:
+            Query results as list of tuples.
+        """
+        conn = self.get_connection(thread_id)
+        try:
+            result = conn.execute(query).fetchall()
+            return result
+        finally:
+            conn.close()
+
+    def execute_df(self, query: str, thread_id: str | None = None) -> Any:
+        """
+        Execute a SQL query and return results as a pandas DataFrame.
+
+        Args:
+            query: SQL query to execute.
+            thread_id: Thread identifier. If None, uses current context thread_id.
+
+        Returns:
+            Query results as pandas DataFrame.
+        """
+        import pandas as pd
+
+        conn = self.get_connection(thread_id)
+        try:
+            result = conn.execute(query).fetchdf()
+            return result
+        finally:
+            conn.close()
+
+    def create_table_from_data(
+        self,
+        table_name: str,
+        data: list[dict] | list[tuple],
+        columns: list[str] | None = None,
+        thread_id: str | None = None,
+    ) -> None:
+        """
+        Create a table from data (list of dicts or tuples).
+
+        Args:
+            table_name: Name of the table to create.
+            data: Data to insert (list of dicts or list of tuples).
+            columns: Column names (required if data is list of tuples).
+            thread_id: Thread identifier. If None, uses current context thread_id.
+        """
+        conn = self.get_connection(thread_id)
+        try:
+            # Drop table if exists
+            conn.execute(f"DROP TABLE IF EXISTS {table_name}")
+
+            if isinstance(data, list) and len(data) > 0:
+                if isinstance(data[0], dict):
+                    # List of dicts - keys become columns
+                    conn.execute(f"CREATE TABLE {table_name} AS SELECT * FROM data")
+                elif isinstance(data[0], (tuple, list)):
+                    # List of tuples - use provided column names
+                    if not columns:
+                        raise ValueError("columns parameter required for tuple data")
+                    # Create a DataFrame and register it
+                    import pandas as pd
+                    df = pd.DataFrame(data, columns=columns)
+                    conn.register("df", df)
+                    conn.execute(f"CREATE TABLE {table_name} AS SELECT * FROM df")
+                else:
+                    raise ValueError(f"Unsupported data type: {type(data[0])}")
+        finally:
+            conn.close()
+
+    def append_to_table(
+        self,
+        table_name: str,
+        data: list[dict] | list[tuple],
+        thread_id: str | None = None,
+    ) -> None:
+        """
+        Append data to an existing table.
+
+        Args:
+            table_name: Name of the table to append to.
+            data: Data to insert.
+            thread_id: Thread identifier. If None, uses current context thread_id.
+        """
+        import pandas as pd
+
+        conn = self.get_connection(thread_id)
+        try:
+            df = pd.DataFrame(data)
+            conn.register("new_data", df)
+            conn.execute(f"INSERT INTO {table_name} SELECT * FROM new_data")
+        finally:
+            conn.close()
+
+    def list_tables(self, thread_id: str | None = None) -> list[str]:
+        """
+        List all tables in the thread's DuckDB database.
+
+        Args:
+            thread_id: Thread identifier. If None, uses current context thread_id.
+
+        Returns:
+            List of table names.
+        """
+        conn = self.get_connection(thread_id)
+        try:
+            result = conn.execute("SHOW TABLES").fetchall()
+            return [row[0] for row in result]
+        finally:
+            conn.close()
+
+    def table_exists(self, table_name: str, thread_id: str | None = None) -> bool:
+        """
+        Check if a table exists.
+
+        Args:
+            table_name: Name of the table.
+            thread_id: Thread identifier. If None, uses current context thread_id.
+
+        Returns:
+            True if table exists, False otherwise.
+        """
+        tables = self.list_tables(thread_id)
+        return table_name in tables
+
+    def get_table_info(self, table_name: str, thread_id: str | None = None) -> list[dict]:
+        """
+        Get information about a table's columns.
+
+        Args:
+            table_name: Name of the table.
+            thread_id: Thread identifier. If None, uses current context thread_id.
+
+        Returns:
+            List of column info dicts.
+        """
+        conn = self.get_connection(thread_id)
+        try:
+            result = conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+            return [
+                {
+                    "cid": row[0],
+                    "name": row[1],
+                    "type": row[2],
+                    "notnull": row[3],
+                    "dflt_value": row[4],
+                    "pk": row[5],
+                }
+                for row in result
+            ]
+        finally:
+            conn.close()
+
+    def drop_table(self, table_name: str, thread_id: str | None = None) -> None:
+        """
+        Drop a table if it exists.
+
+        Args:
+            table_name: Name of the table to drop.
+            thread_id: Thread identifier. If None, uses current context thread_id.
+        """
+        conn = self.get_connection(thread_id)
+        try:
+            conn.execute(f"DROP TABLE IF EXISTS {table_name}")
+        finally:
+            conn.close()
+
+    def export_table(
+        self,
+        table_name: str,
+        output_path: Path,
+        format: str = "csv",
+        thread_id: str | None = None,
+    ) -> None:
+        """
+        Export a table to a file.
+
+        Args:
+            table_name: Name of the table to export.
+            output_path: Path to save the exported file.
+            format: Export format ("csv", "parquet", "json").
+            thread_id: Thread identifier. If None, uses current context thread_id.
+        """
+        conn = self.get_connection(thread_id)
+        try:
+            if format == "csv":
+                conn.execute(f"COPY {table_name} TO '{output_path}' (HEADER, DELIMITER ',')")
+            elif format == "parquet":
+                conn.execute(f"COPY {table_name} TO '{output_path}' (FORMAT 'parquet')")
+            elif format == "json":
+                conn.execute(f"COPY {table_name} TO '{output_path}' (FORMAT 'json')")
+            else:
+                raise ValueError(f"Unsupported export format: {format}")
+        finally:
+            conn.close()
+
+    def delete_db(self, thread_id: str) -> bool:
+        """
+        Delete the DuckDB database file for a thread.
+
+        Args:
+            thread_id: Thread identifier.
+
+        Returns:
+            True if file was deleted, False if it didn't exist.
+        """
+        db_path = self._get_db_path(thread_id)
+        if db_path.exists():
+            db_path.unlink()
+            return True
+        return False
+
+    def merge_databases(
+        self,
+        source_thread_ids: list[str],
+        target_thread_id: str,
+    ) -> dict[str, Any]:
+        """
+        Merge DuckDB databases from multiple threads into one.
+
+        Copies tables from source databases into the target database.
+        Tables are prefixed with source thread name to avoid conflicts.
+
+        Args:
+            source_thread_ids: List of source thread IDs to merge.
+            target_thread_id: Target thread ID for merged database.
+
+        Returns:
+            Summary of merge operation.
+        """
+        target_db_path = self._get_db_path(target_thread_id)
+        target_db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        tables_merged = 0
+        errors = []
+
+        for source_thread_id in source_thread_ids:
+            source_db_path = self._get_db_path(source_thread_id)
+
+            if not source_db_path.exists():
+                errors.append(f"Source DB not found: {source_thread_id}")
+                continue
+
+            # Sanitize source thread_id for table prefix
+            safe_source = sanitize_thread_id(source_thread_id)
+
+            try:
+                # Get source tables
+                source_conn = duckdb.connect(str(source_db_path))
+                try:
+                    source_tables = source_conn.execute("SHOW TABLES").fetchall()
+                    source_table_names = [row[0] for row in source_tables]
+                finally:
+                    source_conn.close()
+
+                # Copy tables to target
+                target_conn = duckdb.connect(str(target_db_path))
+                try:
+                    # Attach source database
+                    target_conn.execute(f"ATTACH '{source_db_path}' AS source_db")
+
+                    for table_name in source_table_names:
+                        # Copy with prefix to avoid conflicts
+                        new_table_name = f"{table_name}_from_{safe_source}"
+                        target_conn.execute(
+                            f"CREATE TABLE {new_table_name} AS SELECT * FROM source_db.{table_name}"
+                        )
+                        tables_merged += 1
+
+                    target_conn.execute("DETACH source_db")
+                finally:
+                    target_conn.close()
+
+                # Delete source database after successful merge
+                source_db_path.unlink()
+
+            except Exception as e:
+                errors.append(f"Error merging {source_thread_id}: {str(e)}")
+
+        return {
+            "target_thread_id": target_thread_id,
+            "source_thread_ids": source_thread_ids,
+            "tables_merged": tables_merged,
+            "errors": errors,
+        }
+
+
+# Global DuckDB storage instance
+_duckdb_storage = DuckDBStorage()
+
+
+def get_duckdb_storage() -> DuckDBStorage:
+    """Get the global DuckDB storage instance."""
+    return _duckdb_storage
