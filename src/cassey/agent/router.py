@@ -6,7 +6,7 @@ from langchain_core.messages import AIMessage
 from langgraph.graph import END
 
 from cassey.agent.state import AgentState
-from cassey.config.constants import MAX_ITERATIONS
+from cassey.config import settings
 
 
 def should_continue(state: AgentState) -> Literal["tools", "continue", "end"]:
@@ -23,7 +23,7 @@ def should_continue(state: AgentState) -> Literal["tools", "continue", "end"]:
     iterations = state.get("iterations", 0)
 
     # Check iteration limit first
-    if iterations >= MAX_ITERATIONS:
+    if iterations >= settings.MAX_ITERATIONS:
         return "continue"
 
     # Check last message for tool calls

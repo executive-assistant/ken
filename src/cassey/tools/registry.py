@@ -15,6 +15,8 @@ async def get_file_tools() -> list[BaseTool]:
         delete_folder,
         rename_folder,
         move_file,
+        glob_files,
+        grep_files,
     )
     return [
         read_file,
@@ -24,6 +26,8 @@ async def get_file_tools() -> list[BaseTool]:
         delete_folder,
         rename_folder,
         move_file,
+        glob_files,
+        grep_files,
     ]
 
 
@@ -72,6 +76,12 @@ async def get_python_tools() -> list[BaseTool]:
 async def get_search_tools() -> list[BaseTool]:
     """Get web search tools."""
     from cassey.tools.search_tool import get_search_tools as _get
+    return _get()
+
+
+async def get_orchestrator_tools() -> list[BaseTool]:
+    """Get orchestrator tools for delegation."""
+    from cassey.tools.orchestrator_tools import get_orchestrator_tools as _get
     return _get()
 
 
@@ -169,12 +179,13 @@ async def get_all_tools() -> list[BaseTool]:
     Get all available tools for the agent.
 
     Aggregates tools from:
-    - File operations (read, write, list, create_folder, delete_folder, rename_folder, move_file)
+    - File operations (read, write, list, create_folder, delete_folder, rename_folder, move_file, glob_files, grep_files)
     - Database operations (create_table, query_table, etc.)
     - Time tools (get_current_time, get_current_date, list_timezones)
     - Reminder tools (set_reminder, list_reminders, cancel_reminder, edit_reminder)
     - Python execution (execute_python for calculations and data processing)
     - Web search (web_search via SearXNG)
+    - Orchestrator (delegate_to_orchestrator for scheduling and workflows)
     - Standard tools (calculator, search)
 
     Note: MCP tools are available via get_mcp_tools() but not loaded by default.
@@ -202,6 +213,9 @@ async def get_all_tools() -> list[BaseTool]:
 
     # Add search tools
     all_tools.extend(await get_search_tools())
+
+    # Add orchestrator tools
+    all_tools.extend(await get_orchestrator_tools())
 
     # MCP tools are NOT loaded by default - use get_mcp_tools() manually if needed
 

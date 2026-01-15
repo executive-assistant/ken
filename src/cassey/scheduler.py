@@ -1,7 +1,8 @@
-"""Scheduler for reminder notifications using APScheduler.
+"""Scheduler for reminder notifications and scheduled job execution using APScheduler.
 
-This module runs as a background task, polling the database for pending reminders
-and sending notifications through the appropriate channels.
+This module runs as a background task, polling the database for:
+1. Pending reminders - sends notifications
+2. Scheduled jobs - executes worker agents
 """
 
 import asyncio
@@ -12,7 +13,10 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from cassey.config.settings import settings
+from cassey.storage.file_sandbox import set_thread_id, clear_thread_id
 from cassey.storage.reminder import ReminderStorage, get_reminder_storage
+from cassey.storage.scheduled_jobs import get_scheduled_job_storage
+from cassey.tools.orchestrator_tools import execute_worker, parse_cron_next
 
 logger = logging.getLogger(__name__)
 
@@ -112,8 +116,135 @@ async def _process_pending_reminders():
         logger.error(f"Error processing pending reminders: {e}")
 
 
+async def _process_pending_jobs():
+    """Check for and process pending scheduled jobs.
+
+    This is called periodically by the scheduler.
+    Jobs are executed synchronously within the timeout period.
+    """
+    storage = await get_scheduled_job_storage()
+
+    # Get jobs due now or in the past
+    now = datetime.now()
+    # Look back 1 minute to catch any we might have missed
+    lookback = now - timedelta(minutes=1)
+
+    try:
+        pending = await storage.get_due_jobs(now)
+
+        if not pending:
+            return
+
+        logger.info(f"Processing {len(pending)} pending scheduled job(s)")
+
+        for job in pending:
+            # Mark as running
+            await storage.mark_started(job.id, now)
+
+            logger.info(f"Executing job {job.id}: {job.task[:50]}...")
+
+            # Get worker if specified
+            from cassey.storage.workers import get_worker_storage
+
+            worker = None
+            if job.worker_id:
+                worker_storage = await get_worker_storage()
+                worker = await worker_storage.get_by_id(job.worker_id)
+
+            # Set thread_id context for worker execution
+            set_thread_id(job.thread_id)
+
+            try:
+                # Execute the job
+                if worker:
+                    # Execute with worker
+                    result, error = await execute_worker(
+                        worker=worker,
+                        task=job.task,
+                        flow=job.flow,
+                        thread_id=job.thread_id,
+                        timeout=30,
+                    )
+                else:
+                    # No worker - simple execution (use python tool)
+                    result, error = await _execute_simple_job(job)
+
+                # Record result
+                if error:
+                    await storage.mark_failed(job.id, error)
+                    logger.error(f"Job {job.id} failed: {error}")
+                else:
+                    await storage.mark_completed(job.id, result)
+                    logger.info(f"Job {job.id} completed successfully")
+
+                    # Handle recurrence - create next instance
+                    if job.is_recurring:
+                        try:
+                            next_due = parse_cron_next(job.cron, now)
+                            next_job = await storage.create_next_instance(job, next_due)
+                            logger.info(f"Created next instance {next_job.id} at {next_due}")
+                        except Exception as e:
+                            logger.error(f"Failed to create next instance: {e}")
+            finally:
+                # Clean up thread_id to avoid leaking thread-local fallback
+                clear_thread_id()
+
+    except Exception as e:
+        logger.error(f"Error processing pending jobs: {e}")
+
+
+async def _execute_simple_job(job) -> tuple[str | None, str | None]:
+    """Execute a simple job without a dedicated worker.
+
+    Uses the Python tool for basic execution.
+
+    Args:
+        job: ScheduledJob instance
+
+    Returns:
+        Tuple of (result, error)
+    """
+    from cassey.tools.python_tool import execute_python
+
+    # Try to execute the flow as Python code
+    # This is a simplified execution - workers are better for complex tasks
+
+    # For simple notification jobs, create a message file
+    job_name = job.name or f"job_{job.id}"
+
+    # Build simple execution based on flow
+    code_lines = []
+    flow_lower = job.flow.lower()
+
+    # Parse the flow for basic patterns
+    if "notify" in flow_lower or "alert" in flow_lower or "send" in flow_lower:
+        # Create a message file for notification
+        message_content = f"Task: {job.task}\n"
+        code_lines.append(f"with open('{job_name}_message.txt', 'w') as f:")
+        code_lines.append(f"    f.write('''{message_content}''')")
+        code_lines.append("result = 'Notification created'")
+
+    # Add any user-specified Python code from the flow
+    if "```python" in job.flow or "```" in job.flow:
+        # Extract code block
+        import re
+        code_match = re.search(r"```(?:python)?\n(.*?)```", job.flow, re.DOTALL)
+        if code_match:
+            code_lines.append(code_match.group(1))
+
+    if code_lines:
+        code = "\n".join(code_lines)
+        try:
+            result = execute_python(code)
+            return result, None
+        except Exception as e:
+            return None, str(e)
+
+    return f"Job executed: {job.task}", None
+
+
 async def start_scheduler():
-    """Start the reminder scheduler.
+    """Start the scheduler for reminders and scheduled jobs.
 
     This should be called during application startup.
     """
@@ -133,12 +264,20 @@ async def start_scheduler():
         replace_existing=True,
     )
 
+    # Add job to check for pending scheduled jobs every 60 seconds
+    _scheduler.add_job(
+        _process_pending_jobs,
+        IntervalTrigger(seconds=60),
+        id="check_pending_jobs",
+        replace_existing=True,
+    )
+
     _scheduler.start()
-    logger.info("Reminder scheduler started")
+    logger.info("Scheduler started (reminders + scheduled jobs)")
 
 
 async def stop_scheduler():
-    """Stop the reminder scheduler.
+    """Stop the scheduler.
 
     This should be called during application shutdown.
     """
@@ -148,7 +287,7 @@ async def stop_scheduler():
         return
 
     _scheduler.shutdown()
-    logger.info("Reminder scheduler stopped")
+    logger.info("Scheduler stopped")
 
 
 def get_scheduler() -> AsyncIOScheduler | None:

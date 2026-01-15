@@ -19,6 +19,7 @@ class TestSummarizationThreshold:
         with patch("cassey.agent.graph.settings") as mock:
             mock.ENABLE_SUMMARIZATION = True
             mock.SUMMARY_THRESHOLD = 5  # Low threshold for testing
+            mock.MAX_ITERATIONS = 20  # Max iterations before giving up
             yield mock
 
     def create_ai_message_with_tools(self, content=""):
@@ -142,15 +143,13 @@ class TestSummarizationThreshold:
 
     def test_max_iterations_with_tools_at_threshold(self, mock_settings):
         """Test behavior at max iterations with tool calls."""
-        from cassey.config.constants import MAX_ITERATIONS
-
         # Create state at threshold with tool calls, at max iterations
         messages = self.create_message_sequence(human_count=3, ai_count=2, with_tools=False)
         messages.append(self.create_ai_message_with_tools("Need to search"))
 
         state: AgentState = {
             "messages": messages,
-            "iterations": MAX_ITERATIONS,  # At max iterations
+            "iterations": mock_settings.MAX_ITERATIONS,  # At max iterations
         }
 
         result = route_agent(state)

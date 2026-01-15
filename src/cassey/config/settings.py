@@ -45,11 +45,13 @@ class Settings(BaseSettings):
 
     # Database Storage
     DB_ROOT: Path = Field(default=Path("./data/db"))
+    KB_ROOT: Path = Field(default=Path("./data/kb"))
 
     # Context Management
     MAX_CONTEXT_TOKENS: int = 100_000  # Max tokens before summarization
     ENABLE_SUMMARIZATION: bool = True  # Enable running summaries by default
     SUMMARY_THRESHOLD: int = 20  # Summarize after N messages
+    MAX_ITERATIONS: int = 20  # Maximum ReAct loop iterations to prevent infinite loops
 
     # Web Search
     SEARXNG_HOST: str | None = None
@@ -71,6 +73,8 @@ class Settings(BaseSettings):
             ".css",
             ".sh",
             ".bash",
+            ".log",
+            ".pdf",
         }
     )
 
@@ -84,6 +88,12 @@ class Settings(BaseSettings):
     @classmethod
     def resolve_db_root(cls, v: str | Path) -> Path:
         """Resolve database root to absolute path."""
+        return Path(v).resolve()
+
+    @field_validator("KB_ROOT", mode="before")
+    @classmethod
+    def resolve_kb_root(cls, v: str | Path) -> Path:
+        """Resolve knowledge base root to absolute path."""
         return Path(v).resolve()
 
     def get_files_path(self, user_id: str) -> Path:

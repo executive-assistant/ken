@@ -1,6 +1,7 @@
 """Secure file operations within a workspace sandbox."""
 
 import os
+import threading
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Literal
@@ -11,41 +12,58 @@ from cassey.config.settings import settings
 
 
 # Context variable for thread_id - set by channels when processing messages
+# This provides true thread isolation via Python's contextvars mechanism
 _thread_id: ContextVar[str | None] = ContextVar("_thread_id", default=None)
 
-# Fallback module-level storage for thread_id (for LangChain tool execution)
-# ContextVar doesn't propagate through LangChain's tool execution
-_module_thread_id: str | None = None
+# Thread-local fallback for thread-pool execution where ContextVar may not propagate
+# Keys are thread IDs (int), values are thread_id strings (str)
+_thread_local_fallback: dict[int, str] = {}
+_thread_local_lock = threading.Lock()
 
 
 def set_thread_id(thread_id: str) -> None:
-    """Set the thread_id for the current context."""
-    global _module_thread_id
+    """Set the thread_id for the current context.
+
+    Stores in both ContextVar (for async propagation) and thread-local dict
+    (for thread-pool execution fallback).
+    """
     _thread_id.set(thread_id)
-    _module_thread_id = thread_id
+    # Also store in thread-local fallback
+    thread_id_int = threading.get_ident()
+    with _thread_local_lock:
+        _thread_local_fallback[thread_id_int] = thread_id
 
 
 def get_thread_id() -> str | None:
     """Get the thread_id for the current context.
 
-    First checks the ContextVar (for direct calls), then falls back to
-    the module-level variable (for LangChain tool execution).
+    Uses ContextVar which provides automatic propagation across async tasks
+    and thread pools, ensuring proper isolation between concurrent requests.
+
+    Falls back to thread-local dict if ContextVar is empty (can happen in
+    thread-pool execution where ContextVar doesn't propagate).
     """
+    # Try ContextVar first (async-safe)
     ctx_val = _thread_id.get()
     if ctx_val:
         return ctx_val
-    return _module_thread_id
+
+    # Fallback: check thread-local dict
+    thread_id_int = threading.get_ident()
+    with _thread_local_lock:
+        return _thread_local_fallback.get(thread_id_int)
 
 
 def clear_thread_id() -> None:
-    """Clear the thread_id from both storage mechanisms."""
-    global _module_thread_id
-    _module_thread_id = None
-    # Reset the ContextVar by setting a new token
+    """Clear the thread_id from the current context."""
     try:
         _thread_id.set(None)
     except Exception:
         pass
+    # Also clear from thread-local fallback
+    thread_id_int = threading.get_ident()
+    with _thread_local_lock:
+        _thread_local_fallback.pop(thread_id_int, None)
 
 
 class FileSandbox:
@@ -99,10 +117,17 @@ class FileSandbox:
                 f"Path traversal blocked: {requested} is outside sandbox {root}"
             )
 
-        # Check file extension (skip if it's a directory or allow_directories is True)
-        if not allow_directories and requested.is_file():
+        # Check file extension
+        # - Skip if allow_directories is True
+        # - Check if file exists AND is a file
+        # - OR if file doesn't exist (new file), check extension from path
+        should_check_extension = not allow_directories and (
+            requested.is_file() or not requested.exists()
+        )
+
+        if should_check_extension:
             if requested.suffix.lower() not in self.allowed_extensions:
-                allowed = ", ".join(self.allowed_extensions)
+                allowed = ", ".join(sorted(self.allowed_extensions))
                 raise SecurityError(
                     f"File type '{requested.suffix}' not allowed. Allowed types: {allowed}"
                 )
@@ -246,7 +271,13 @@ def write_file(file_path: str, content: str) -> str:
 @tool
 def list_files(directory: str = "", recursive: bool = False) -> str:
     """
-    List files in the files directory.
+    List files and folders in a directory (browse directory structure).
+
+    USE THIS WHEN: You want to see what's in a folder, explore directory structure,
+    or get an overview of available files. This shows file/folder NAMES only.
+
+    For finding files by pattern, use glob_files instead.
+    For searching file contents, use grep_files instead.
 
     Args:
         directory: Subdirectory to list (empty for root).
@@ -258,6 +289,10 @@ def list_files(directory: str = "", recursive: bool = False) -> str:
     Examples:
         >>> list_files()
         "Files in files: notes.txt, data/"
+
+        >>> list_files("docs")
+        "Files in docs/: file1.txt, file2.md, subdir/"
+
         >>> list_files("docs", recursive=True)
         "Files in docs/: file1.txt\\n  subdir/file2.txt"
     """
@@ -443,3 +478,215 @@ def move_file(source: str, destination: str) -> str:
         return f"Security error: {e}"
     except Exception as e:
         return f"Error moving file: {e}"
+
+
+@tool
+def glob_files(pattern: str, directory: str = "") -> str:
+    """
+    Find files by name pattern or extension (like "find . -name").
+
+    USE THIS WHEN: You need to find files of a specific type (e.g., "*.py", "*.json"),
+    or find files matching a name pattern. Shows file sizes and timestamps.
+
+    For browsing a folder, use list_files instead.
+    For searching inside file contents, use grep_files instead.
+
+    Args:
+        pattern: Glob pattern (e.g., "*.py", "**/*.json", "data/**/*.csv").
+        directory: Base directory to search in (empty for sandbox root).
+
+    Returns:
+        List of matching files with sizes and modified times.
+
+    Examples:
+        >>> glob_files("*.py")
+        "Found 3 Python files:
+        - main.py (1024 bytes, 2024-01-15 10:30)
+        - utils.py (512 bytes, 2024-01-14 15:20)
+        - config.py (256 bytes, 2024-01-13 09:00)"
+
+        >>> glob_files("**/*.json", "docs")
+        "Found 2 JSON files:
+        - docs/data/schema.json (2048 bytes)
+        - docs/api/endpoints.json (1024 bytes)"
+    """
+    import glob as stdlib_glob
+    from datetime import datetime
+
+    sandbox = get_sandbox()
+    try:
+        base_path = sandbox.root / directory if directory else sandbox.root
+
+        if not base_path.exists():
+            return f"Directory not found: {directory}"
+
+        if not base_path.is_dir():
+            return f"Not a directory: {directory}"
+
+        # Use glob to find matching files
+        search_pattern = str(base_path / pattern)
+        matches = sorted(stdlib_glob.glob(search_pattern, recursive=True))
+
+        if not matches:
+            return f"No files found matching pattern: {pattern}"
+
+        # Build result with metadata
+        from pathlib import Path as StdPath
+        results = []
+        for match in matches:
+            p = StdPath(match)
+            if p.is_file():
+                # Get relative path from sandbox root
+                rel_path = p.relative_to(sandbox.root)
+                size = p.stat().st_size
+                mtime = datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+                results.append(f"- {rel_path} ({size} bytes, {mtime})")
+
+        return f"Found {len(results)} file(s) matching '{pattern}':\n" + "\n".join(results)
+    except SecurityError as e:
+        return f"Security error: {e}"
+    except Exception as e:
+        return f"Error globbing files: {e}"
+
+
+@tool
+def grep_files(
+    pattern: str,
+    directory: str = "",
+    output_mode: str = "content",
+    context_lines: int = 2,
+    ignore_case: bool = False
+) -> str:
+    """
+    Search INSIDE file contents (like Unix grep command).
+
+    USE THIS WHEN: You need to find specific text or patterns WITHIN files,
+    e.g., find which files contain "TODO", search for function names, find API keys.
+    This searches file CONTENTS, not filenames.
+
+    For browsing a folder, use list_files instead.
+    For finding files by name/type, use glob_files instead.
+
+    Args:
+        pattern: Regular expression pattern to search for.
+        directory: Directory to search in (empty for sandbox root).
+        output_mode: Output format:
+            - "files": Only list matching files
+            - "content": Show matching lines with context (default)
+            - "count": Show match counts per file
+        context_lines: Number of context lines before/after matches (for content mode).
+        ignore_case: Case-insensitive search.
+
+    Returns:
+        Search results in the specified format.
+
+    Examples:
+        >>> grep_files("TODO", output_mode="files")
+        "Found 'TODO' in 2 files:
+        - main.py
+        - utils.py"
+
+        >>> grep_files("import.*os", output_mode="content", context_lines=1)
+        "Found 'import.*os' in 2 files:
+        main.py:
+        3: import os
+        4: import sys
+        ..."
+
+        >>> grep_files("error", output_mode="count", ignore_case=True)
+        "Found 'error' (case-insensitive) in 3 files:
+        - main.py: 5 matches
+        - utils.py: 2 matches
+        - config.py: 1 match"
+    """
+    import re
+    from pathlib import Path as StdPath
+
+    sandbox = get_sandbox()
+    try:
+        base_path = sandbox.root / directory if directory else sandbox.root
+
+        if not base_path.exists():
+            return f"Directory not found: {directory}"
+
+        if not base_path.is_dir():
+            return f"Not a directory: {directory}"
+
+        # Compile regex pattern
+        flags = re.IGNORECASE if ignore_case else 0
+        try:
+            regex = re.compile(pattern, flags)
+        except re.error as e:
+            return f"Invalid regex pattern: {e}"
+
+        # Search through all files
+        matches = {}
+        for file_path in base_path.rglob("*"):
+            if file_path.is_file():
+                # Check file extension
+                if file_path.suffix.lower() not in sandbox.allowed_extensions:
+                    continue
+
+                try:
+                    content = file_path.read_text(encoding="utf-8")
+                    lines = content.splitlines()
+
+                    file_matches = []
+                    for line_num, line in enumerate(lines, start=1):
+                        if regex.search(line):
+                            file_matches.append((line_num, line))
+
+                    if file_matches:
+                        rel_path = file_path.relative_to(sandbox.root)
+                        matches[rel_path] = file_matches
+                except (UnicodeDecodeError, PermissionError):
+                    # Skip files that can't be read as text
+                    continue
+
+        if not matches:
+            return f"No matches found for pattern: {pattern}"
+
+        # Format output based on mode
+        if output_mode == "files":
+            result = f"Found '{pattern}' in {len(matches)} file(s):\n"
+            result += "\n".join(f"- {p}" for p in sorted(matches.keys()))
+            return result
+
+        elif output_mode == "count":
+            result = f"Found '{pattern}' in {len(matches)} file(s):\n"
+            sorted_matches = sorted(matches.items(), key=lambda x: -len(x[1]))
+            for path, file_matches in sorted_matches:
+                count = len(file_matches)
+                suffix = "match" if count == 1 else "matches"
+                result += f"- {path}: {count} {suffix}\n"
+            return result.rstrip()
+
+        else:  # content mode
+            result = f"Found '{pattern}' in {len(matches)} file(s):\n\n"
+            for path in sorted(matches.keys()):
+                result += f"{path}:\n"
+                file_matches = matches[path]
+
+                # Show matches with context
+                for line_num, line in file_matches:
+                    # Add context lines before
+                    start = max(0, line_num - context_lines - 1)
+                    end = min(len(file_matches), file_matches.index((line_num, line)) + 1)
+                    # Get all lines for this file
+                    try:
+                        full_content = (sandbox.root / path).read_text(encoding="utf-8")
+                        all_lines = full_content.splitlines()
+                    except:
+                        continue
+
+                    for i in range(max(0, line_num - context_lines - 1),
+                                 min(len(all_lines), line_num + context_lines)):
+                        prefix = "  " if i != line_num - 1 else ">>"
+                        result += f"{prefix} {i+1}: {all_lines[i]}\n"
+                    result += "\n"
+            return result.rstrip()
+
+    except SecurityError as e:
+        return f"Security error: {e}"
+    except Exception as e:
+        return f"Error grepping files: {e}"

@@ -10,9 +10,8 @@ from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from cassey.agent.state import AgentState
-from cassey.agent.nodes import call_model, call_tools, summarize_conversation
+from cassey.agent.nodes import call_model, call_tools, summarize_conversation, increment_iterations
 from cassey.config import settings
-from cassey.config.constants import MAX_ITERATIONS
 
 
 def route_agent(state: AgentState) -> str:
@@ -38,7 +37,7 @@ def route_agent(state: AgentState) -> str:
         return "summarize"
 
     # Check iteration limit and tool calls
-    if iterations < MAX_ITERATIONS:
+    if iterations < settings.MAX_ITERATIONS:
         last_message = messages[-1]
         if isinstance(last_message, AIMessage) and hasattr(last_message, "tool_calls") and last_message.tool_calls:
             return "tools"
@@ -107,6 +106,7 @@ def create_react_graph(
     workflow.add_node("agent", call_model_node)
     workflow.add_node("tools", call_tools_node)
     workflow.add_node("summarize", summarize_node)
+    workflow.add_node("increment", increment_iterations)
 
     # Set entry point
     workflow.set_entry_point("agent")
@@ -123,9 +123,10 @@ def create_react_graph(
         },
     )
 
-    # Add edge from tools back to agent
-    # After executing tools, go back to agent to process results
-    workflow.add_edge("tools", "agent")
+    # Add edge from tools to increment iterations, then back to agent
+    # After executing tools, increment iteration count, then go back to agent
+    workflow.add_edge("tools", "increment")
+    workflow.add_edge("increment", "agent")
 
     # After summarizing, go to END
     workflow.add_edge("summarize", END)

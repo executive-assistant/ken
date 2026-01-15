@@ -7,7 +7,7 @@ import sys
 
 from cassey.config import create_model, settings
 from cassey.tools.registry import get_all_tools
-from cassey.storage import get_checkpointer
+from cassey.storage.checkpoint import get_async_checkpointer
 from cassey.storage.user_registry import UserRegistry
 from cassey.channels.telegram import TelegramChannel
 from cassey.channels.http import HttpChannel
@@ -32,7 +32,7 @@ async def main() -> None:
     print(f" Loaded {len(tools)} tools")
 
     # Create checkpointer
-    checkpointer = get_checkpointer()
+    checkpointer = await get_async_checkpointer()
     print(f" Checkpointer: {settings.CHECKPOINT_STORAGE}")
 
     # Compile agent graph

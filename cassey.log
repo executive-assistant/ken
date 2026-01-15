@@ -1,0 +1,9 @@
+ Using LLM provider: openai
+ Loaded 28 tools
+ Checkpointer: postgres
+ Agent graph compiled
+ Reminder scheduler started
+ Telegram channel created
+
+Cassey is starting...
+ Bot is running. Channels: telegram. Press Ctrl+C to stop.

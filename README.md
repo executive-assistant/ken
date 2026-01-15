@@ -10,7 +10,10 @@ Multi-channel AI agent platform with LangGraph ReAct agent.
 - **Merge Operations** - Merge threads into persistent user identity
 - **Audit Logging** - Message and conversation tracking
 - **Time Tools** - Current time/date in any timezone
-- **Reminders** (Planned) - Scheduled notifications with recurrence
+- **Reminders** - Scheduled notifications with recurrence
+- **Web Search** - SearXNG integration
+- **Python Execution** - Sandboxed code execution for calculations and data processing
+- **File Search** - Glob patterns and grep content search
 
 ## Architecture
 
@@ -20,12 +23,48 @@ Multi-channel AI agent platform with LangGraph ReAct agent.
 - `file_paths` - File ownership tracking per thread
 - `db_paths` - Database ownership tracking per thread
 - `user_registry` - Operation audit log (merge/split/remove)
+- `reminders` - Scheduled reminder notifications
 
 ### Tools
-- **File operations**: `read_file`, `write_file`, `list_files`
-- **Database operations**: `create_table`, `query_table`, `insert_table`, `list_tables`, `describe_table`, `drop_table`, `export_table`, `import_table`
-- **Time tools**: `get_current_time`, `get_current_date`, `list_timezones`
-- **Other**: Calculator, Tavily search (when configured)
+
+**File Operations:**
+- `read_file` - Read file contents
+- `write_file` - Write files
+- `list_files` - Browse directory contents
+- `create_folder` / `delete_folder` / `rename_folder` - Folder management
+- `move_file` - Move/rename files
+- `glob_files` - Find files by pattern (`*.py`, `**/*.json`)
+- `grep_files` - Search file contents with regex
+
+**Database Operations:**
+- `create_table` - Create table with column definitions
+- `query_table` - Execute SQL queries
+- `insert_table` - Insert rows
+- `update_table` / `delete_table` - Modify data
+- `list_tables` - Show all tables
+- `describe_table` - Show table schema
+- `export_table` / `import_table` - Data export/import
+
+**Time & Reminders:**
+- `get_current_time` - Current time in any timezone
+- `get_current_date` - Current date
+- `list_timezones` - Available timezones
+- `set_reminder` - Create reminders with recurrence
+- `list_reminders` - Show active reminders
+- `cancel_reminder` - Cancel pending reminders
+- `edit_reminder` - Modify existing reminders
+
+**Code Execution:**
+- `execute_python` - Sandboxed Python for calculations, data processing, file I/O
+  - Thread-scoped file access
+  - Allowed modules: json, csv, math, datetime, random, statistics, urllib, etc.
+  - 30s timeout, path traversal protection
+
+**Web Search:**
+- `web_search` - Search via SearXNG
+
+**Other:**
+- Calculator tool
 
 ### Thread vs User Isolation
 
@@ -42,9 +81,9 @@ cp .env.example .env
 # Edit .env with your API keys
 
 # Start PostgreSQL
-docker-compose up -d postgres_db
+docker-compose up -d
 
-# Run migrations
+# Run migrations (auto-run on first start)
 psql $POSTGRES_URL < migrations/001_initial_schema.sql
 
 # Run bot (default: Telegram)
@@ -91,12 +130,15 @@ curl http://localhost:8000/health
 | file_paths | File ownership per thread |
 | db_paths | Database ownership per thread |
 | user_registry | Operation audit (merge/split/remove) |
+| reminders | Scheduled reminder notifications |
 
 ### Key Columns
 
 - `conversations.user_id` - NULL for anonymous, set after merge
 - `file_paths.thread_id` - Maps to sanitized directory name
 - `db_paths.thread_id` - Maps to .db file name
+- `reminders.user_id` - Owner of the reminder
+- `reminders.thread_ids` - Threads that can trigger the reminder
 
 ## Merge Operations
 
@@ -130,6 +172,20 @@ data/files/
 
 Sanitized thread_id used as directory name (replaces `:`, `/`, `@`, `\` with `_`).
 
+### File Search
+
+```python
+# Find files by pattern
+glob_files("*.py")           # All Python files
+glob_files("**/*.json")       # Recursive JSON search
+glob_files("test_*")          # Files starting with test_
+
+# Search file contents
+grep_files("TODO", output_mode="files")     # Which files contain TODO
+grep_files("API_KEY", output_mode="content") # Show matching lines
+grep_files("error", output_mode="count")     # Count matches
+```
+
 ## Database Operations
 
 Each thread gets its own database:
@@ -150,6 +206,47 @@ Available tools:
 - `list_tables()` - Show all tables
 - `describe_table(name)` - Show table schema
 
+## Knowledge Base Storage
+
+KB files follow the same per-thread layout as databases, but live under a separate root:
+
+```
+data/kb/
+  telegram_123456789.db
+  http_abc123.db
+```
+
+## Python Code Execution
+
+The `execute_python` tool allows sandboxed Python execution:
+
+```python
+# Math calculations
+execute_python("print(2 + 2)")
+# "4"
+
+# Data processing
+execute_python("""
+import csv, json
+with open('data.csv') as f:
+    data = list(csv.DictReader(f))
+print(json.dumps(data))
+""")
+
+# File I/O (thread-scoped)
+execute_python("""
+with open('output.json', 'w') as f:
+    json.dump({'result': 42}, f)
+""")
+```
+
+**Security:**
+- 30 second timeout
+- Path traversal protection
+- File extension whitelist
+- Max file size: 10MB
+- Thread-scoped directories
+
 ## Configuration
 
 Environment variables:
@@ -158,17 +255,23 @@ Environment variables:
 # Required
 OPENAI_API_KEY=sk-...
 TELEGRAM_BOT_TOKEN=...
-POSTGRES_URL=postgresql://...
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_USER=cassey
+POSTGRES_PASSWORD=cassey_password
+POSTGRES_DB=cassey_db
 
 # Channels
 CASSEY_CHANNELS=telegram  # Options: telegram, http (comma-separated)
 
 # Optional
-TAVILY_API_KEY=...  # For web search
+DEFAULT_LLM_PROVIDER=openai  # Options: openai, anthropic, zhipu
+SEARXNG_HOST=https://searxng.example.com  # Web search
 HTTP_HOST=0.0.0.0   # HTTP server host (default: 0.0.0.0)
 HTTP_PORT=8000      # HTTP server port (default: 8000)
 FILES_ROOT=./data/files  # Default file storage
 DB_ROOT=./data/db        # Default DuckDB database storage
+KB_ROOT=./data/kb        # Default KB DuckDB storage
 ```
 
 ## Project Structure
@@ -177,9 +280,10 @@ DB_ROOT=./data/db        # Default DuckDB database storage
 cassey/
 ├── src/cassey/
 │   ├── channels/       # Telegram, HTTP
-│   ├── storage/        # User registry, file sandbox, database
-│   ├── tools/          # LangChain tools (file, database, time, etc.)
+│   ├── storage/        # User registry, file sandbox, database, reminders
+│   ├── tools/          # LangChain tools (file, database, time, python, search, etc.)
 │   ├── agent/          # LangGraph agent graph
+│   ├── scheduler.py    # APScheduler integration
 │   └── config/         # Settings
 ├── migrations/         # SQL migrations
 ├── tests/              # Unit tests

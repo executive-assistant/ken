@@ -1,8 +1,5 @@
 """Application constants."""
 
-# Maximum ReAct loop iterations to prevent infinite loops
-MAX_ITERATIONS = 10
-
 # System prompt for the agent
 DEFAULT_SYSTEM_PROMPT = """You are Cassey, a helpful AI assistant with access to various tools.
 

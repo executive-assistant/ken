@@ -11,6 +11,8 @@ from cassey.storage.file_sandbox import (
     read_file,
     write_file,
     list_files,
+    glob_files,
+    grep_files,
 )
 
 
@@ -162,3 +164,159 @@ class TestFileOperationsWithThreadId:
         # Thread 2 should not see thread 1's files
         assert "a.txt" not in items2
         assert "b.md" not in items2
+
+
+class TestGlobFiles:
+    """Test glob_files tool."""
+
+    @pytest.fixture
+    def temp_root(self, tmp_path):
+        """Create a temporary root with test files."""
+        files_dir = tmp_path / "files"
+        files_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create test files
+        (files_dir / "test1.txt").write_text("content1")
+        (files_dir / "test2.txt").write_text("content2")
+        (files_dir / "data.json").write_text('{"key": "value"}')
+        (files_dir / "script.py").write_text("print('hello')")
+
+        # Create subdirectory with files
+        subdir = files_dir / "subdir"
+        subdir.mkdir()
+        (subdir / "nested.txt").write_text("nested content")
+
+        return files_dir
+
+    def test_glob_all_txt(self, temp_root, monkeypatch):
+        """Test globbing all .txt files."""
+        # Mock get_sandbox to use temp_root
+        from cassey.storage import file_sandbox
+        mock_sandbox = FileSandbox(root=temp_root, allowed_extensions={".txt", ".json", ".py"})
+
+        monkeypatch.setattr(file_sandbox, "get_sandbox", lambda: mock_sandbox)
+
+        result = glob_files.invoke({"pattern": "*.txt", "directory": ""})
+        assert "Found" in result or "test1.txt" in result
+        assert "test2.txt" in result
+
+    def test_glob_recursive(self, temp_root, monkeypatch):
+        """Test recursive globbing with **."""
+        from cassey.storage import file_sandbox
+        mock_sandbox = FileSandbox(root=temp_root, allowed_extensions={".txt", ".json", ".py"})
+
+        monkeypatch.setattr(file_sandbox, "get_sandbox", lambda: mock_sandbox)
+
+        result = glob_files.invoke({"pattern": "**/*.txt", "directory": ""})
+        # Should find files in subdirectory too
+        assert "test1.txt" in result or "Found" in result
+
+    def test_glob_json(self, temp_root, monkeypatch):
+        """Test globbing .json files."""
+        from cassey.storage import file_sandbox
+        mock_sandbox = FileSandbox(root=temp_root, allowed_extensions={".txt", ".json", ".py"})
+
+        monkeypatch.setattr(file_sandbox, "get_sandbox", lambda: mock_sandbox)
+
+        result = glob_files.invoke({"pattern": "*.json", "directory": ""})
+        assert "data.json" in result
+
+    def test_glob_no_matches(self, temp_root, monkeypatch):
+        """Test globbing with no matches."""
+        from cassey.storage import file_sandbox
+        mock_sandbox = FileSandbox(root=temp_root, allowed_extensions={".txt", ".json", ".py"})
+
+        monkeypatch.setattr(file_sandbox, "get_sandbox", lambda: mock_sandbox)
+
+        result = glob_files.invoke({"pattern": "*.md", "directory": ""})
+        assert "No files found" in result
+
+
+class TestGrepFiles:
+    """Test grep_files tool."""
+
+    @pytest.fixture
+    def temp_root(self, tmp_path):
+        """Create a temporary root with test files."""
+        files_dir = tmp_path / "files"
+        files_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create test files with specific content
+        (files_dir / "file1.txt").write_text("hello world\nfoo bar\ntest line")
+        (files_dir / "file2.txt").write_text("hello there\ngoodbye world")
+        (files_dir / "file3.txt").write_text("no matches here")
+
+        return files_dir
+
+    def test_grep_files_mode(self, temp_root, monkeypatch):
+        """Test grep with files output mode."""
+        from cassey.storage import file_sandbox
+        mock_sandbox = FileSandbox(root=temp_root, allowed_extensions={".txt"})
+
+        monkeypatch.setattr(file_sandbox, "get_sandbox", lambda: mock_sandbox)
+
+        result = grep_files.invoke({"pattern": "hello", "directory": "", "output_mode": "files"})
+        assert "Found" in result
+        assert "file1.txt" in result
+        assert "file2.txt" in result
+        assert "file3.txt" not in result
+
+    def test_grep_count_mode(self, temp_root, monkeypatch):
+        """Test grep with count output mode."""
+        from cassey.storage import file_sandbox
+        mock_sandbox = FileSandbox(root=temp_root, allowed_extensions={".txt"})
+
+        monkeypatch.setattr(file_sandbox, "get_sandbox", lambda: mock_sandbox)
+
+        result = grep_files.invoke({"pattern": "hello", "directory": "", "output_mode": "count"})
+        assert "file1.txt" in result
+        assert "file2.txt" in result
+        assert "match" in result.lower()
+
+    def test_grep_content_mode(self, temp_root, monkeypatch):
+        """Test grep with content output mode (default)."""
+        from cassey.storage import file_sandbox
+        mock_sandbox = FileSandbox(root=temp_root, allowed_extensions={".txt"})
+
+        monkeypatch.setattr(file_sandbox, "get_sandbox", lambda: mock_sandbox)
+
+        result = grep_files.invoke({"pattern": "world", "directory": "", "output_mode": "content"})
+        assert "Found" in result
+        # Should show matching lines
+        assert "world" in result.lower()
+
+    def test_grep_ignore_case(self, temp_root, monkeypatch):
+        """Test grep with case-insensitive search."""
+        from cassey.storage import file_sandbox
+        mock_sandbox = FileSandbox(root=temp_root, allowed_extensions={".txt"})
+
+        monkeypatch.setattr(file_sandbox, "get_sandbox", lambda: mock_sandbox)
+
+        result = grep_files.invoke({
+            "pattern": "HELLO",
+            "directory": "",
+            "output_mode": "files",
+            "ignore_case": True
+        })
+        assert "file1.txt" in result or "file2.txt" in result
+
+    def test_grep_regex_pattern(self, temp_root, monkeypatch):
+        """Test grep with regex pattern."""
+        from cassey.storage import file_sandbox
+        mock_sandbox = FileSandbox(root=temp_root, allowed_extensions={".txt"})
+
+        monkeypatch.setattr(file_sandbox, "get_sandbox", lambda: mock_sandbox)
+
+        # Match "hello" followed by any word
+        result = grep_files.invoke({"pattern": r"hello \w+", "directory": "", "output_mode": "files"})
+        assert "Found" in result
+
+    def test_grep_no_matches(self, temp_root, monkeypatch):
+        """Test grep with pattern that doesn't match."""
+        from cassey.storage import file_sandbox
+        mock_sandbox = FileSandbox(root=temp_root, allowed_extensions={".txt"})
+
+        monkeypatch.setattr(file_sandbox, "get_sandbox", lambda: mock_sandbox)
+
+        result = grep_files.invoke({"pattern": "nonexistent", "directory": "", "output_mode": "files"})
+        assert "No matches found" in result
