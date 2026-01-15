@@ -3,6 +3,7 @@
 Tools for setting, listing, and canceling reminders.
 """
 
+import re
 from datetime import datetime
 
 from langchain_core.tools import tool
@@ -90,17 +91,57 @@ def _parse_time_expression(time_str: str) -> datetime:
     # Handle "at X" - assume today or tomorrow if time has passed
     if time_str.startswith("at "):
         time_only = time_str[3:]
+        # Check if it's "at X today" format
+        if " today" in time_only:
+            # Extract just the time part before "today"
+            time_portion = time_only.split(" today")[0].strip()
+            try:
+                parsed_time = date_parser.parse(time_portion, default=now)
+                # Only zero out minutes if no explicit minutes in input
+                if ":" not in time_portion and not re.match(r'^\d{4}$', time_portion.replace(':', '')):
+                    parsed_time = parsed_time.replace(minute=0, second=0, microsecond=0)
+                return parsed_time
+            except Exception:
+                pass
         try:
             parsed_time = date_parser.parse(time_only, default=now)
+            # Only zero out minutes if no explicit minutes in input
+            if ":" not in time_only and not re.match(r'^\d{4}$', time_only.replace(':', '')):
+                parsed_time = parsed_time.replace(minute=0, second=0, microsecond=0)
             if parsed_time < now:
                 parsed_time += relativedelta(days=1)
             return parsed_time
         except Exception:
             pass
 
+    # Handle military time format like "1130hr", "1430hr" (4 digits + hr)
+    military_match = re.search(r'(\d{4})hr\b', time_str)
+
+    # Also handle 4-digit military time without "hr" suffix (e.g., "1430", "0230")
+    # But only if it looks like a time (not part of a longer number)
+    if not military_match and re.match(r'^\d{4}$', time_str):
+        time_digits = time_str
+        hour = int(time_digits[:2])
+        minute = int(time_digits[2:])
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            parsed_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if parsed_time < now:
+                parsed_time += relativedelta(days=1)
+            return parsed_time
+
+    if military_match:
+        time_digits = military_match.group(1)
+        hour = int(time_digits[:2])
+        minute = int(time_digits[2:])
+        # Validate hour/minute range
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            parsed_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            if parsed_time < now:
+                parsed_time += relativedelta(days=1)
+            return parsed_time
+
     # Handle numeric time formats like "0130hr", "1:30pm", "15:30"
     # Try to extract just the time portion
-    import re
     time_match = re.search(r'(\d{1,2})(?::(\d{2}))?\s*(am|pm|hr)?', time_str)
     if time_match and not any(word in time_str for word in ['day', 'tomorrow', 'today', 'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', '-', '/']):
         hour = int(time_match.group(1))

@@ -1,5 +1,7 @@
 """Agent nodes for the ReAct graph."""
 
+import asyncio
+import contextvars
 import json
 from typing import Any
 
@@ -11,8 +13,7 @@ from langchain_core.tools import BaseTool
 
 from cassey.agent.state import AgentState
 from cassey.agent.prompts import get_system_prompt
-from cassey.config.constants import MAX_ITERATIONS
-from cassey.config import settings
+from cassey.config.settings import settings
 
 
 async def call_model(
@@ -38,12 +39,12 @@ async def call_model(
     messages = state["messages"]
 
     # Check iteration limit
-    if state.get("iterations", 0) >= MAX_ITERATIONS:
+    if state.get("iterations", 0) >= settings.MAX_ITERATIONS:
         # Return a message indicating we've reached max iterations
         return {
             "messages": [
                 AIMessage(
-                    content=f"I've reached the maximum number of reasoning steps ({MAX_ITERATIONS}). Let me summarize what I've found so far."
+                    content=f"I've reached the maximum number of reasoning steps ({settings.MAX_ITERATIONS}). Let me summarize what I've found so far."
                 )
             ]
         }
@@ -115,9 +116,22 @@ async def call_tools(
             continue
 
         try:
-            # Execute the tool
+            # Execute the tool with proper context propagation
             tool = tools_by_name[tool_name]
-            result = await tool.ainvoke(tool_args)
+
+            # Check if tool is async or sync
+            # LangChain tools with async def have _arun method
+            is_async = hasattr(tool, '_arun') and asyncio.iscoroutinefunction(tool._arun)
+
+            if is_async:
+                # Async tool - use ainvoke (ContextVars propagate automatically)
+                result = await tool.ainvoke(tool_args)
+            else:
+                # Sync tool - run in executor with copied context
+                ctx = contextvars.copy_context()
+                loop = asyncio.get_running_loop()
+                result = await loop.run_in_executor(None, ctx.run, tool.invoke, tool_args)
+
             outputs.append(
                 ToolMessage(
                     content=json.dumps(result) if not isinstance(result, str) else result,

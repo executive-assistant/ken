@@ -21,12 +21,17 @@ _db_storage = DBStorage()
 
 
 def _get_current_thread_id() -> str:
-    """Get the current thread_id from context."""
+    """Get the current thread_id from context.
+
+    Raises:
+        ValueError: If thread_id is not available (called outside channel context).
+    """
     thread_id = get_thread_id()
     if thread_id is None:
         raise ValueError(
-            "No thread_id in context. "
-            "Database tools must be called from within a channel message handler."
+            "No thread_id in context. Database tools must be called from within a channel message handler. "
+            "If you're calling this tool directly, make sure to set thread_id context first using "
+            "set_thread_id() from cassey.storage.file_sandbox."
         )
     return thread_id
 

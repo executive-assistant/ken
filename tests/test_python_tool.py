@@ -41,7 +41,7 @@ class TestPythonTool:
     def test_statistics_module(self):
         """Test statistics module."""
         result = execute_python("import statistics; print(statistics.mean([1, 2, 3, 4, 5]))")
-        assert "3.0" in result
+        assert "3" in result  # Returns "3" not "3.0"
 
     def test_list_operations(self):
         """Test list comprehensions and operations."""
@@ -60,12 +60,22 @@ class TestPythonTool:
 
     def test_for_loop(self):
         """Test for loop."""
-        result = execute_python("total = 0; for i in range(5): total += i; print(total)")
+        result = execute_python("""
+total = 0
+for i in range(5):
+    total += i
+print(total)
+""")
         assert "10" in result
 
     def test_while_loop(self):
         """Test while loop."""
-        result = execute_python("i = 0; while i < 3: i += 1; print(i)")
+        result = execute_python("""
+i = 0
+while i < 3:
+    i += 1
+print(i)
+""")
         assert "3" in result
 
     def test_function_definition(self):
@@ -85,7 +95,12 @@ print(add(5, 3))
 
     def test_try_except(self):
         """Test exception handling."""
-        result = execute_python("try: 1/0; except ZeroDivisionError: print('caught')")
+        result = execute_python("""
+try:
+    1/0
+except ZeroDivisionError:
+    print('caught')
+""")
         assert "caught" in result
 
     def test_no_output(self):
@@ -147,6 +162,113 @@ result = sum(math.factorial(i) for i in range(6))
 print(result)
 """
         result = execute_python(code)
-        assert "344" in result  # 0! + 1! + 2! + 3! + 4! + 5! = 1+1+2+6+24+120 = 154... wait let me recalculate
-        # 0! = 1, 1! = 1, 2! = 2, 3! = 6, 4! = 24, 5! = 120, sum = 154
-        # Actually the code calculates factorial from 0 to 5, not starting at 1
+        # 0! + 1! + 2! + 3! + 4! + 5! = 1+1+2+6+24+120 = 154
+        assert "154" in result
+
+    # File I/O tests
+    def test_file_write(self):
+        """Test writing a file in the sandbox."""
+        # Use a unique filename to avoid conflicts
+        import time
+        filename = f"test_write_{int(time.time())}.txt"
+        code = f"""
+with open('{filename}', 'w') as f:
+    f.write('Hello, sandbox!')
+print('success')
+"""
+        result = execute_python(code)
+        assert "success" in result
+
+    def test_file_read(self):
+        """Test reading a file in the sandbox."""
+        import time
+        filename = f"test_read_{int(time.time())}.txt"
+        # First write a file
+        write_code = f"""
+with open('{filename}', 'w') as f:
+    f.write('Content to read')
+"""
+        execute_python(write_code)
+        # Then read it
+        read_code = f"""
+with open('{filename}', 'r') as f:
+    content = f.read()
+print(content)
+"""
+        result = execute_python(read_code)
+        assert "Content to read" in result
+
+    def test_file_write_and_read_json(self):
+        """Test writing and reading JSON data."""
+        import time
+        filename = f"test_json_{int(time.time())}.json"
+        code = f"""
+import json
+data = {{'name': 'test', 'value': 123}}
+with open('{filename}', 'w') as f:
+    json.dump(data, f)
+
+with open('{filename}', 'r') as f:
+    loaded = json.load(f)
+print(loaded['name'])
+"""
+        result = execute_python(code)
+        assert "test" in result
+
+    def test_csv_write(self):
+        """Test writing CSV data."""
+        import time
+        filename = f"test_csv_{int(time.time())}.csv"
+        code = f"""
+import csv
+with open('{filename}', 'w', newline='') as f:
+    writer = csv.writer(f)
+    writer.writerow(['name', 'age'])
+    writer.writerow(['Alice', 30])
+    writer.writerow(['Bob', 25])
+print('csv written')
+"""
+        result = execute_python(code)
+        assert "csv written" in result
+
+    def test_csv_read(self):
+        """Test reading CSV data."""
+        import time
+        filename = f"test_csv_read_{int(time.time())}.csv"
+        # First write CSV
+        write_code = f"""
+import csv
+with open('{filename}', 'w', newline='') as f:
+    writer = csv.writer(f)
+    writer.writerow(['name', 'age'])
+    writer.writerow(['Alice', 30])
+"""
+        execute_python(write_code)
+        # Then read it
+        read_code = f"""
+import csv
+with open('{filename}', 'r') as f:
+    reader = csv.reader(f)
+    rows = list(reader)
+print(rows[1][0])
+"""
+        result = execute_python(read_code)
+        assert "Alice" in result
+
+    def test_path_traversal_blocked(self):
+        """Test that path traversal attacks are blocked."""
+        code = r"""
+with open('../../../etc/passwd', 'r') as f:
+    print(f.read())
+"""
+        result = execute_python(code)
+        assert "Security error" in result or "Path traversal blocked" in result or "Error" in result
+
+    def test_disallowed_file_extension(self):
+        """Test that files with disallowed extensions are blocked."""
+        code = r"""
+with open('test.exe', 'w') as f:
+    f.write('malicious')
+"""
+        result = execute_python(code)
+        assert "Security error" in result or "not allowed" in result or "Error" in result

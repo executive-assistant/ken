@@ -28,6 +28,7 @@ dependencies = [
     "apscheduler>=3.10.0",
     "uvicorn[standard]>=0.32.0",
     "zhipuai>=2.1.5.20250825",
+    "pypdf>=6.6.0",
 ]
 
 [dependency-groups]

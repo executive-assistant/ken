@@ -173,11 +173,11 @@ class BaseChannel(ABC):
                     metadata=message.metadata,
                 )
 
-            # Build state
+            # Build state with only the new message
+            # LangGraph's checkpointer will automatically restore previous state
+            # (messages, summary, iterations) when we provide the thread_id in config
             state = {
                 "messages": [HumanMessage(content=message.content)],
-                "summary": "",  # Initialize with empty summary
-                "iterations": 0,
                 "user_id": message.user_id,
                 "channel": channel,
             }
