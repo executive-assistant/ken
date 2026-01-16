@@ -9,6 +9,7 @@ import duckdb
 from cassey.config import settings
 from cassey.storage.file_sandbox import get_thread_id
 from cassey.storage.user_registry import sanitize_thread_id
+from cassey.storage.workspace_storage import get_workspace_id
 
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -28,8 +29,8 @@ class DBStorage:
     """
     Database storage for tabular data.
 
-    Each thread has its own isolated database file.
-    Supports thread/user separation and merge/remove operations.
+    Each workspace has its own isolated database file.
+    Supports workspace/thread/user separation and merge/remove operations.
     """
 
     def __init__(self, root: Path | None = None) -> None:
@@ -37,25 +38,46 @@ class DBStorage:
         Initialize database storage.
 
         Args:
-            root: Root directory for database files.
+            root: Root directory for database files (deprecated, use workspace paths).
         """
         self.root = (root or settings.DB_ROOT).resolve()
 
-    def _get_db_path(self, thread_id: str | None = None) -> Path:
+    def _get_db_path(
+        self,
+        thread_id: str | None = None,
+        workspace_id: str | None = None,
+    ) -> Path:
         """
-        Get the database path for a thread.
+        Get the database path for a thread or workspace.
+
+        Priority:
+        1. workspace_id if provided (new workspace-based routing)
+        2. workspace_id from context (new workspace-based routing)
+        3. thread_id if provided (legacy thread-based routing)
+        4. thread_id from context (legacy thread-based routing)
 
         Args:
-            thread_id: Thread identifier. If None, uses current context thread_id.
+            thread_id: Thread identifier (legacy).
+            workspace_id: Workspace identifier (new).
 
         Returns:
             Path to the database file.
         """
+        # Check workspace_id first
+        if workspace_id is None:
+            workspace_id = get_workspace_id()
+
+        if workspace_id:
+            db_path = settings.get_workspace_db_path(workspace_id)
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            return db_path
+
+        # Fall back to thread_id
         if thread_id is None:
             thread_id = get_thread_id()
 
         if thread_id is None:
-            raise ValueError("No thread_id provided and no thread_id in context")
+            raise ValueError("No thread_id/workspace_id provided and none in context")
 
         safe_thread_id = sanitize_thread_id(thread_id)
 

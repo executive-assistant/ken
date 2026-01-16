@@ -153,19 +153,14 @@ async def refresh_meta(thread_id: str) -> dict[str, Any]:
 
     # KB tables
     kb_tables: list[str] = []
-    kb_path = settings.get_thread_kb_path(thread_id)
-    if kb_path.exists():
-        try:
-            from cassey.storage.kb_storage import get_kb_storage
+    try:
+        from cassey.storage.seekdb_storage import get_thread_seekdb_dir, list_seekdb_collections
 
-            kb_storage = get_kb_storage()
-            conn = kb_storage.get_connection(thread_id)
-            try:
-                kb_tables = [row[0] for row in conn.execute("SHOW TABLES").fetchall()]
-            finally:
-                conn.close()
-        except Exception:
-            kb_tables = []
+        kb_path = get_thread_seekdb_dir(thread_id)
+        if kb_path.exists():
+            kb_tables = list_seekdb_collections(thread_id)
+    except Exception:
+        kb_tables = []
 
     meta["kb"] = {
         "tables": sorted(kb_tables)[:MAX_TRACKED_TABLES],

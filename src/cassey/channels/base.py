@@ -17,6 +17,11 @@ from cassey.storage.file_sandbox import (
     write_file,
 )
 from cassey.storage.user_registry import UserRegistry
+from cassey.storage.workspace_storage import (
+    ensure_thread_workspace,
+    set_workspace_id as set_workspace_context,
+    clear_workspace_id as clear_workspace_context,
+)
 
 logger = get_logger(__name__)
 
@@ -242,6 +247,14 @@ class BaseChannel(ABC):
         # Set thread_id context for file sandbox operations
         set_thread_id(thread_id)
 
+        # Ensure workspace exists and set workspace_id context
+        try:
+            workspace_id = await ensure_thread_workspace(thread_id, message.user_id)
+            set_workspace_context(workspace_id)
+        except Exception as e:
+            logger.warning("Failed to setup workspace for thread {thread}: {error}", thread=thread_id, error=e)
+            # Continue without workspace - tools will fall back to thread_id
+
         try:
             set_user_id(message.user_id)
             # Log incoming message if audit is enabled
@@ -302,6 +315,7 @@ class BaseChannel(ABC):
             )
             return messages
         finally:
-            # Clear thread_id to prevent leaking between conversations
+            # Clear context to prevent leaking between conversations
             clear_thread_id()
             clear_user_id()
+            clear_workspace_context()

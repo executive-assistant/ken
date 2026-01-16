@@ -15,6 +15,7 @@ from cassey.storage.meta_registry import (
     record_files_removed_by_prefix,
     record_folder_renamed,
 )
+from cassey.storage.workspace_storage import get_workspace_id
 
 
 # Context variable for thread_id - set by channels when processing messages
@@ -221,21 +222,29 @@ def get_sandbox(user_id: str | None = None) -> FileSandbox:
 
     Priority:
     1. user_id if provided (for backward compatibility)
-    2. thread_id from context (set by channels)
-    3. global sandbox (no separation)
+    2. workspace_id from context (new workspace-based routing)
+    3. thread_id from context (legacy thread-based routing)
+    4. global sandbox (no separation)
 
     Args:
         user_id: Optional user ID for sandbox separation.
 
     Returns:
-        A FileSandbox instance scoped to the user/thread.
+        A FileSandbox instance scoped to the user/thread/workspace.
     """
     if user_id:
         user_path = settings.FILES_ROOT / user_id
         user_path.mkdir(parents=True, exist_ok=True)
         return FileSandbox(root=user_path)
 
-    # Check for thread_id in context
+    # Check for workspace_id in context (new workspace-based routing)
+    workspace_id_val = get_workspace_id()
+    if workspace_id_val:
+        workspace_path = settings.get_workspace_files_path(workspace_id_val)
+        workspace_path.mkdir(parents=True, exist_ok=True)
+        return FileSandbox(root=workspace_path)
+
+    # Check for thread_id in context (legacy thread-based routing)
     thread_id_val = get_thread_id()
     if thread_id_val:
         # Use new path helper with backward compatibility fallback

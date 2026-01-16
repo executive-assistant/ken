@@ -118,7 +118,7 @@ async def get_orchestrator_tools() -> list[BaseTool]:
 
 
 async def get_kb_tools() -> list[BaseTool]:
-    """Get Knowledge Base tools with full-text search."""
+    """Get Knowledge Base tools backed by SeekDB."""
     from cassey.storage.kb_tools import get_kb_tools as _get
     return await _get()
 
@@ -226,7 +226,7 @@ async def get_all_tools() -> list[BaseTool]:
     - File operations (read_file, write_file, list_files, create_folder, delete_folder, rename_folder, move_file, glob_files, grep_files)
     - Database operations (create_db_table, query_db, etc.)
     - Shared database operations (query_shared_db, list_shared_db_tables, etc.)
-    - Knowledge Base (create_kb_table, search_kb with fuzzy fallback, kb_list, etc.)
+    - Knowledge Base (create_kb_collection, search_kb, kb_list, etc.)
     - Memory (create_memory, update_memory, delete_memory, list_memories, search_memories, etc.)
     - Time tools (get_current_time, get_current_date, list_timezones)
     - Reminder tools (reminder_set with dateparser, reminder_list, reminder_cancel, reminder_edit)

@@ -40,20 +40,32 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = "cassey_db"
 
     # Security / File Sandbox
-    FILES_ROOT: Path = Field(default=Path("./data/files"))
     MAX_FILE_SIZE_MB: int = 10
 
-    # Database Storage
+    # Legacy storage paths (deprecated, use workspace-based storage)
+    FILES_ROOT: Path = Field(default=Path("./data/files"))
     DB_ROOT: Path = Field(default=Path("./data/db"))
-    KB_ROOT: Path = Field(default=Path("./data/kb"))
 
-    # New consolidated storage (per-thread user data)
+    # Consolidated storage (per-thread user data, transitional)
     USERS_ROOT: Path = Field(default=Path("./data/users"))
     SHARED_DB_PATH: Path = Field(default=Path("./data/shared/shared.db"))
 
-    # Admin access control
-    ADMIN_USER_IDS: set[str] = Field(default_factory=set)
-    ADMIN_THREAD_IDS: set[str] = Field(default_factory=set)
+    # Workspace-based storage (primary storage going forward)
+    WORKSPACES_ROOT: Path = Field(default=Path("./data/workspaces"))
+
+    # Admin access control (stored as comma-separated strings for env compatibility)
+    ADMIN_USER_IDS_RAW: str = Field(default="", alias="ADMIN_USER_IDS")
+    ADMIN_THREAD_IDS_RAW: str = Field(default="", alias="ADMIN_THREAD_IDS")
+
+    @property
+    def ADMIN_USER_IDS(self) -> set[str]:
+        """Admin user IDs parsed from comma-separated string."""
+        return {item.strip() for item in self.ADMIN_USER_IDS_RAW.split(",") if item.strip()} if self.ADMIN_USER_IDS_RAW else set()
+
+    @property
+    def ADMIN_THREAD_IDS(self) -> set[str]:
+        """Admin thread IDs parsed from comma-separated string."""
+        return {item.strip() for item in self.ADMIN_THREAD_IDS_RAW.split(",") if item.strip()} if self.ADMIN_THREAD_IDS_RAW else set()
 
     # Agent Runtime
     AGENT_RUNTIME: Literal["langchain", "custom"] = "langchain"
@@ -72,6 +84,10 @@ class Settings(BaseSettings):
     MW_CONTEXT_EDITING_ENABLED: bool = False
     MW_CONTEXT_EDITING_TRIGGER_TOKENS: int = 100_000
     MW_CONTEXT_EDITING_KEEP_TOOL_USES: int = 10
+    SEEKDB_EMBEDDING_MODE: Literal["default", "none"] = "default"
+    SEEKDB_FULLTEXT_PARSER: Literal["ik", "space", "ngram", "ngram2", "beng"] = "space"
+    SEEKDB_DISTANCE_METRIC: Literal["cosine", "l2", "inner_product"] = "cosine"
+    SEEKDB_DATABASE: str = "kb"
 
     # Context Management
     MAX_CONTEXT_TOKENS: int = 100_000  # Max tokens before summarization
@@ -109,6 +125,13 @@ class Settings(BaseSettings):
     OCR_TIMEOUT_SECONDS: int = 30
     OCR_STRUCTURED_MODEL: str = "fast"
     OCR_STRUCTURED_PROVIDER: Literal["anthropic", "openai", "zhipu"] | None = None
+
+    @field_validator("OCR_STRUCTURED_PROVIDER", mode="before")
+    @classmethod
+    def empty_string_to_none(cls, v: str | None) -> str | None:
+        """Convert empty strings to None for optional provider fields."""
+        return v if v else None
+
     OCR_STRUCTURED_MAX_RETRIES: int = 2
 
     # Allowed file extensions for file operations
@@ -153,11 +176,6 @@ class Settings(BaseSettings):
         """Resolve database root to absolute path."""
         return Path(v).resolve()
 
-    @field_validator("KB_ROOT", mode="before")
-    @classmethod
-    def resolve_kb_root(cls, v: str | Path) -> Path:
-        """Resolve knowledge base root to absolute path."""
-        return Path(v).resolve()
 
     @field_validator("USERS_ROOT", mode="before")
     @classmethod
@@ -171,33 +189,11 @@ class Settings(BaseSettings):
         """Resolve shared DB path to absolute path."""
         return Path(v).resolve()
 
-    @field_validator("ADMIN_USER_IDS", mode="before")
+    @field_validator("WORKSPACES_ROOT", mode="before")
     @classmethod
-    def parse_admin_user_ids(cls, v: str | list[str] | set[str] | None) -> set[str]:
-        """Parse admin user IDs from comma-separated string or list."""
-        if v is None:
-            return set()
-        if isinstance(v, set):
-            return {str(item).strip() for item in v if str(item).strip()}
-        if isinstance(v, list):
-            return {str(item).strip() for item in v if str(item).strip()}
-        if isinstance(v, str):
-            return {item.strip() for item in v.split(",") if item.strip()}
-        return {str(v).strip()}
-
-    @field_validator("ADMIN_THREAD_IDS", mode="before")
-    @classmethod
-    def parse_admin_thread_ids(cls, v: str | list[str] | set[str] | None) -> set[str]:
-        """Parse admin thread IDs from comma-separated string or list."""
-        if v is None:
-            return set()
-        if isinstance(v, set):
-            return {str(item).strip() for item in v if str(item).strip()}
-        if isinstance(v, list):
-            return {str(item).strip() for item in v if str(item).strip()}
-        if isinstance(v, str):
-            return {item.strip() for item in v.split(",") if item.strip()}
-        return {str(v).strip()}
+    def resolve_workspaces_root(cls, v: str | Path) -> Path:
+        """Resolve workspaces root to absolute path."""
+        return Path(v).resolve()
 
     @field_validator("AGENT_RUNTIME", "AGENT_RUNTIME_FALLBACK", mode="before")
     @classmethod
@@ -262,24 +258,6 @@ class Settings(BaseSettings):
 
         return new_path
 
-    def get_thread_kb_path(self, thread_id: str) -> Path:
-        """
-        Get KB file path for a thread (new structure).
-
-        Returns: data/users/{thread_id}/kb/kb.db
-        With fallback to: data/kb/{thread_id}.db
-        """
-        safe_thread_id = self._sanitize_thread_id(thread_id)
-        new_path = (self.USERS_ROOT / safe_thread_id / "kb" / "kb.db").resolve()
-
-        # Backward compatibility: use old path if new path doesn't exist
-        if not new_path.exists():
-            old_path = (self.KB_ROOT / f"{safe_thread_id}.db").resolve()
-            if old_path.exists():
-                return old_path
-
-        return new_path
-
     def get_thread_mem_path(self, thread_id: str) -> Path:
         """
         Get memory (mem.db) file path for a thread.
@@ -312,6 +290,84 @@ class Settings(BaseSettings):
         user_path = self.FILES_ROOT / user_id
         user_path.mkdir(parents=True, exist_ok=True)
         return user_path
+
+    def _sanitize_thread_id(self, thread_id: str) -> str:
+        """Sanitize thread_id for use as directory name."""
+        replacements = {":": "_", "/": "_", "@": "_", "\\": "_"}
+        for old, new in replacements.items():
+            thread_id = thread_id.replace(old, new)
+        return thread_id
+
+    def _sanitize_workspace_id(self, workspace_id: str) -> str:
+        """Sanitize workspace_id for use as directory name."""
+        return self._sanitize_thread_id(workspace_id)
+
+    # ============================================================================
+    # Workspace-based paths (primary storage going forward)
+    # ============================================================================
+
+    def get_workspace_root(self, workspace_id: str) -> Path:
+        """
+        Get the root directory for a specific workspace.
+
+        Returns: data/workspaces/{workspace_id}/
+        """
+        safe_id = self._sanitize_workspace_id(workspace_id)
+        return (self.WORKSPACES_ROOT / safe_id).resolve()
+
+    def get_workspace_files_path(self, workspace_id: str) -> Path:
+        """
+        Get files directory for a workspace.
+
+        Returns: data/workspaces/{workspace_id}/files/
+        """
+        return self.get_workspace_root(workspace_id) / "files"
+
+    def get_workspace_kb_path(self, workspace_id: str) -> Path:
+        """
+        Get knowledge base directory for a workspace.
+
+        Returns: data/workspaces/{workspace_id}/kb/
+        """
+        return self.get_workspace_root(workspace_id) / "kb"
+
+    def get_workspace_db_path(self, workspace_id: str) -> Path:
+        """
+        Get database file path for a workspace.
+
+        Returns: data/workspaces/{workspace_id}/db/db.db
+        """
+        db_path = self.get_workspace_root(workspace_id) / "db"
+        return db_path / "db.db"
+
+    def get_workspace_mem_path(self, workspace_id: str) -> Path:
+        """
+        Get memory (mem.db) file path for a workspace.
+
+        Returns: data/workspaces/{workspace_id}/mem/mem.db
+        """
+        mem_path = self.get_workspace_root(workspace_id) / "mem"
+        return mem_path / "mem.db"
+
+    def get_workspace_reminders_path(self, workspace_id: str) -> Path:
+        """
+        Get reminders directory for a workspace.
+
+        Returns: data/workspaces/{workspace_id}/reminders/
+        """
+        return self.get_workspace_root(workspace_id) / "reminders"
+
+    def get_workspace_workflows_path(self, workspace_id: str) -> Path:
+        """
+        Get workflows directory for a workspace.
+
+        Returns: data/workspaces/{workspace_id}/workflows/
+        """
+        return self.get_workspace_root(workspace_id) / "workflows"
+
+    # ============================================================================
+    # Thread-based paths (legacy, transitional - kept for backward compatibility)
+    # ============================================================================
 
     @property
     def POSTGRES_URL(self) -> str:

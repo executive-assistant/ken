@@ -78,31 +78,6 @@ class TestPathHelpers:
             result = settings.get_thread_db_path(thread_id)
             assert result == old_path.resolve()
 
-    def test_get_thread_kb_path_new_layout(self, tmp_path):
-        """Test get_thread_kb_path uses new layout when it exists."""
-        with patch.object(settings, "USERS_ROOT", tmp_path / "data" / "users"):
-            thread_id = "telegram:user123"
-            new_path = settings.USERS_ROOT / "telegram_user123" / "kb" / "main.db"
-            new_path.parent.mkdir(parents=True)
-            new_path.touch()
-
-            result = settings.get_thread_kb_path(thread_id)
-            assert result == new_path.resolve()
-
-    def test_get_thread_kb_path_fallback(self, tmp_path):
-        """Test get_thread_kb_path falls back to old layout."""
-        with patch.object(settings, "USERS_ROOT", tmp_path / "data" / "users"), \
-             patch.object(settings, "KB_ROOT", tmp_path / "data" / "kb"):
-            thread_id = "telegram:user123"
-
-            # Create old layout
-            old_path = settings.KB_ROOT / "telegram_user123.db"
-            old_path.parent.mkdir(parents=True)
-            old_path.touch()
-
-            result = settings.get_thread_kb_path(thread_id)
-            assert result == old_path.resolve()
-
     def test_is_new_storage_layout(self, tmp_path):
         """Test is_new_storage_layout detection."""
         with patch.object(settings, "USERS_ROOT", tmp_path / "data" / "users"):
@@ -203,50 +178,6 @@ class TestMigrationPathResolution:
 
             set_thread_id("")
 
-    def test_kb_storage_uses_new_path(self, tmp_path):
-        """Test KBStorage uses new path when available."""
-        from cassey.storage.kb_storage import KBStorage
-        from cassey.storage.file_sandbox import set_thread_id
-
-        with patch.object(settings, "USERS_ROOT", tmp_path / "data" / "users"), \
-             patch.object(settings, "KB_ROOT", tmp_path / "data" / "kb"):
-
-            thread_id = "telegram:user123"
-            set_thread_id(thread_id)
-
-            # Create new layout
-            new_path = settings.USERS_ROOT / "telegram_user123" / "kb" / "main.db"
-            new_path.parent.mkdir(parents=True)
-            new_path.touch()
-
-            storage = KBStorage()
-            kb_path = storage._get_db_path()
-            assert kb_path == new_path.resolve()
-
-            set_thread_id("")
-
-    def test_kb_storage_fallback_to_old(self, tmp_path):
-        """Test KBStorage falls back to old path."""
-        from cassey.storage.kb_storage import KBStorage
-        from cassey.storage.file_sandbox import set_thread_id
-
-        with patch.object(settings, "USERS_ROOT", tmp_path / "data" / "users"), \
-             patch.object(settings, "KB_ROOT", tmp_path / "data" / "kb"):
-
-            thread_id = "telegram:user123"
-            set_thread_id(thread_id)
-
-            # Create old layout
-            old_path = settings.KB_ROOT / "telegram_user123.db"
-            old_path.parent.mkdir(parents=True)
-            old_path.touch()
-
-            storage = KBStorage()
-            kb_path = storage._get_db_path()
-            assert kb_path == old_path.resolve()
-
-            set_thread_id("")
-
 
 class TestMigrationIntegration:
     """Integration tests for migration logic."""
@@ -257,11 +188,9 @@ class TestMigrationIntegration:
         data_root = tmp_path / "data"
         files_root = data_root / "files"
         db_root = data_root / "db"
-        kb_root = data_root / "kb"
 
         files_root.mkdir(parents=True)
         db_root.mkdir(parents=True)
-        kb_root.mkdir(parents=True)
 
         # Create thread data
         thread_id = "telegram_user123"
@@ -281,19 +210,10 @@ class TestMigrationIntegration:
         conn.commit()
         conn.close()
 
-        # Create KB
-        kb_path = kb_root / f"{thread_id}.db"
-        conn = sqlite3.connect(str(kb_path))
-        conn.execute("CREATE TABLE kb_table (id INTEGER, content TEXT)")
-        conn.execute("INSERT INTO kb_table VALUES (1, 'knowledge')")
-        conn.commit()
-        conn.close()
-
         return {
             "data_root": data_root,
             "files_root": files_root,
             "db_root": db_root,
-            "kb_root": kb_root,
             "thread_id": thread_id,
         }
 
@@ -307,8 +227,7 @@ class TestMigrationIntegration:
 
         with patch.object(settings, "USERS_ROOT", data_root / "users"), \
              patch.object(settings, "FILES_ROOT", files_root), \
-             patch.object(settings, "DB_ROOT", data_root / "db"), \
-             patch.object(settings, "KB_ROOT", data_root / "kb"):
+             patch.object(settings, "DB_ROOT", data_root / "db"):
             result = migrate_thread(thread_id, dry_run=False)
 
             assert result["success"]
@@ -330,8 +249,7 @@ class TestMigrationIntegration:
 
         with patch.object(settings, "USERS_ROOT", data_root / "users"), \
              patch.object(settings, "FILES_ROOT", data_root / "files"), \
-             patch.object(settings, "DB_ROOT", db_root), \
-             patch.object(settings, "KB_ROOT", data_root / "kb"):
+             patch.object(settings, "DB_ROOT", db_root):
             result = migrate_thread(thread_id, dry_run=False)
 
             assert result["success"]
@@ -349,35 +267,6 @@ class TestMigrationIntegration:
 
             assert integrity[0] == "ok"
 
-    def test_migrate_kb(self, old_layout_setup):
-        """Test that KB is migrated correctly."""
-        from scripts.migrate_data import migrate_thread
-
-        thread_id = old_layout_setup["thread_id"]
-        data_root = old_layout_setup["data_root"]
-        kb_root = old_layout_setup["kb_root"]
-
-        with patch.object(settings, "USERS_ROOT", data_root / "users"), \
-             patch.object(settings, "FILES_ROOT", data_root / "files"), \
-             patch.object(settings, "DB_ROOT", data_root / "db"), \
-             patch.object(settings, "KB_ROOT", kb_root):
-            result = migrate_thread(thread_id, dry_run=False)
-
-            assert result["success"]
-            assert result["kb_migrated"]
-
-            # Verify KB integrity
-            new_kb_path = settings.USERS_ROOT / thread_id / "kb" / "main.db"
-            assert new_kb_path.exists()
-
-            conn = sqlite3.connect(str(new_kb_path))
-            cursor = conn.cursor()
-            cursor.execute("PRAGMA integrity_check")
-            integrity = cursor.fetchone()
-            conn.close()
-
-            assert integrity[0] == "ok"
-
     def test_verify_migration(self, old_layout_setup):
         """Test migration verification."""
         from scripts.migrate_data import migrate_thread, verify_migration
@@ -387,8 +276,7 @@ class TestMigrationIntegration:
 
         with patch.object(settings, "USERS_ROOT", data_root / "users"), \
              patch.object(settings, "FILES_ROOT", data_root / "files"), \
-             patch.object(settings, "DB_ROOT", data_root / "db"), \
-             patch.object(settings, "KB_ROOT", data_root / "kb"):
+             patch.object(settings, "DB_ROOT", data_root / "db"):
             # Migrate
             migrate_thread(thread_id, dry_run=False)
 
@@ -407,8 +295,7 @@ class TestMigrationIntegration:
 
         with patch.object(settings, "USERS_ROOT", data_root / "users"), \
              patch.object(settings, "FILES_ROOT", data_root / "files"), \
-             patch.object(settings, "DB_ROOT", data_root / "db"), \
-             patch.object(settings, "KB_ROOT", data_root / "kb"):
+             patch.object(settings, "DB_ROOT", data_root / "db"):
             # Migrate
             migrate_thread(thread_id, dry_run=False)
 
@@ -425,7 +312,6 @@ class TestMigrationIntegration:
             # Old data should still be there
             assert old_layout_setup["files_root"].exists()
             assert old_layout_setup["db_root"].exists()
-            assert old_layout_setup["kb_root"].exists()
 
 
 class TestMigrationEdgeCases:
@@ -441,8 +327,7 @@ class TestMigrationEdgeCases:
 
         with patch.object(settings, "USERS_ROOT", users_root), \
              patch.object(settings, "FILES_ROOT", files_root), \
-             patch.object(settings, "DB_ROOT", data_root / "db"), \
-             patch.object(settings, "KB_ROOT", data_root / "kb"):
+             patch.object(settings, "DB_ROOT", data_root / "db"):
 
             # Thread ID with special characters
             thread_id = "http:user:with@special\\chars"
@@ -465,8 +350,7 @@ class TestMigrationEdgeCases:
 
         with patch.object(settings, "USERS_ROOT", tmp_path / "data" / "users"), \
              patch.object(settings, "FILES_ROOT", tmp_path / "data" / "files"), \
-             patch.object(settings, "DB_ROOT", tmp_path / "data" / "db"), \
-             patch.object(settings, "KB_ROOT", tmp_path / "data" / "kb"):
+             patch.object(settings, "DB_ROOT", tmp_path / "data" / "db"):
 
             thread_id = "telegram_user123"
 
@@ -481,4 +365,3 @@ class TestMigrationEdgeCases:
             assert result["success"]
             assert result["files_migrated"] == 1
             assert not result["db_migrated"]
-            assert not result["kb_migrated"]
