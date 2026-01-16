@@ -13,11 +13,22 @@ import dateparser
 from cassey.config.settings import settings
 from cassey.storage.db_storage import get_thread_id
 from cassey.storage.reminder import ReminderStorage, get_reminder_storage
+from cassey.storage.meta_registry import record_reminder_count
 
 
 async def _get_storage() -> ReminderStorage:
     """Get reminder storage instance."""
     return await get_reminder_storage()
+
+
+async def _refresh_reminder_meta(thread_id: str) -> None:
+    """Refresh reminder count in meta registry."""
+    try:
+        storage = await _get_storage()
+        reminders = await storage.list_by_user(thread_id, None)
+        record_reminder_count(thread_id, len(reminders))
+    except Exception:
+        return
 
 
 def _parse_time_expression(time_str: str) -> datetime:
@@ -152,6 +163,7 @@ async def reminder_set(
         recurrence=recurrence or None,
     )
 
+    await _refresh_reminder_meta(thread_id)
     recurrence_str = f" (recurring: {recurrence})" if recurrence else ""
     return f"Reminder set for {due_time.strftime('%Y-%m-%d %H:%M')}{recurrence_str}. ID: {reminder.id}"
 
@@ -186,6 +198,7 @@ async def reminder_list(
     if not reminders:
         return "No reminders found."
 
+    record_reminder_count(thread_id, len(reminders))
     lines = [f"{'ID':<5} {'Status':<10} {'Due Time':<20} {'Message'}"]
     lines.append("-" * 80)
 
@@ -229,6 +242,7 @@ async def reminder_cancel(
         return f"Reminder {reminder_id} is not pending (status: {reminder.status})."
 
     await storage.cancel(reminder_id)
+    await _refresh_reminder_meta(thread_id)
     return f"Reminder {reminder_id} cancelled."
 
 
@@ -280,6 +294,7 @@ async def reminder_edit(
     updated = await storage.update(reminder_id, new_message, new_due_time)
 
     if updated:
+        await _refresh_reminder_meta(thread_id)
         changes = []
         if new_message:
             changes.append(f"message to '{new_message}'")

@@ -2,53 +2,52 @@
 -- Run this on a fresh PostgreSQL database
 
 -- ============================================================================
--- LangGraph Checkpoint Tables (required by LangGraph)
+-- LangGraph Checkpoint Tables (required by LangGraph PostgresSaver)
 -- ============================================================================
 
+CREATE TABLE IF NOT EXISTS checkpoints (
+    thread_id TEXT NOT NULL,
+    checkpoint_ns TEXT NOT NULL DEFAULT '',
+    checkpoint_id TEXT NOT NULL,
+    parent_checkpoint_id TEXT,
+    type TEXT,
+    checkpoint JSONB NOT NULL,
+    metadata JSONB,
+    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
+);
+
 CREATE TABLE IF NOT EXISTS checkpoint_blobs (
-    id SERIAL PRIMARY KEY,
-    thread_id VARCHAR(255) NOT NULL,
-    checkpoint_id VARCHAR(255) NOT NULL,
-    checkpoint NUMERIC NOT NULL,
-    blob BYTEA,
-    created_at TIMESTAMP DEFAULT NOW(),
-    UNIQUE(thread_id, checkpoint_id)
+    thread_id TEXT NOT NULL,
+    checkpoint_ns TEXT NOT NULL DEFAULT '',
+    channel TEXT NOT NULL,
+    version TEXT NOT NULL,
+    type TEXT,
+    blob BYTEA NOT NULL,
+    PRIMARY KEY (thread_id, checkpoint_ns, channel, version)
 );
 
 CREATE TABLE IF NOT EXISTS checkpoint_writes (
-    id SERIAL PRIMARY KEY,
-    thread_id VARCHAR(255) NOT NULL,
-    checkpoint_id VARCHAR(255) NOT NULL,
-    checkpoint NUMERIC NOT NULL,
-    task_id VARCHAR(255),
-    idx NUMERIC NOT NULL,
-    channel VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW(),
-    type VARCHAR(255) NOT NULL
+    thread_id TEXT NOT NULL,
+    checkpoint_ns TEXT NOT NULL DEFAULT '',
+    checkpoint_id TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    idx INTEGER NOT NULL,
+    channel TEXT NOT NULL,
+    type TEXT,
+    blob BYTEA,
+    task_path TEXT,
+    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
 );
 
 CREATE TABLE IF NOT EXISTS checkpoint_migrations (
-    id SERIAL PRIMARY KEY,
-    checkpoint NUMERIC NOT NULL,
-    old_checkpoint_id VARCHAR(255),
-    new_checkpoint_id VARCHAR(255),
-    thread_id VARCHAR(255),
-    created_at TIMESTAMP DEFAULT NOW()
+    v INT PRIMARY KEY,
+    started_at TIMESTAMP DEFAULT NOW(),
+    completed_at TIMESTAMP
 );
 
--- Checkpoints table for LangGraph state
-CREATE TABLE IF NOT EXISTS checkpoints (
-    thread_id VARCHAR(255) PRIMARY KEY,
-    checkpoint NUMERIC NOT NULL,
-    parent_checkpoint_id VARCHAR(255),
-    checkpoint_ns VARCHAR(255),
-    created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_checkpoint_blobs_thread ON checkpoint_blobs(thread_id);
-CREATE INDEX IF NOT EXISTS idx_checkpoint_blobs_checkpoint ON checkpoint_blobs(checkpoint);
-CREATE INDEX IF NOT EXISTS idx_checkpoint_writes_thread ON checkpoint_writes(thread_id);
-CREATE INDEX IF NOT EXISTS idx_checkpoint_writes_checkpoint ON checkpoint_writes(checkpoint);
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_checkpoints_thread_id ON checkpoints(thread_id);
+CREATE INDEX IF NOT EXISTS idx_checkpoint_writes_thread_id ON checkpoint_writes(thread_id);
 
 -- ============================================================================
 -- Audit and Ownership Tables

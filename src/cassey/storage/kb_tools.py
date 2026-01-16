@@ -23,6 +23,10 @@ from cassey.config import settings
 from cassey.storage.kb_storage import get_kb_storage
 from cassey.storage.db_storage import validate_identifier
 from cassey.storage.file_sandbox import get_thread_id
+from cassey.storage.meta_registry import (
+    record_kb_table_added,
+    record_kb_table_removed,
+)
 from cassey.storage.user_registry import sanitize_thread_id
 
 _kb_storage = get_kb_storage()
@@ -148,6 +152,7 @@ def create_kb_table(
             # Syntax: PRAGMA create_fts_index(table, id_column, text_columns...)
             conn.execute(f"PRAGMA create_fts_index('{table_name}', 'id', 'content', 'metadata')")
 
+            record_kb_table_added(get_thread_id(), table_name)
             if parsed_docs:
                 return f"Created KB table '{table_name}' with {len(parsed_docs)} documents (BM25 FTS indexed)"
             else:
@@ -453,6 +458,7 @@ def drop_kb_table(table_name: str) -> str:
             # Drop table
             conn.execute(f"DROP TABLE {table_name}")
 
+            record_kb_table_removed(get_thread_id(), table_name)
             return f"Dropped KB table '{table_name}' ({count} documents removed, FTS index dropped)"
 
         finally:
@@ -520,6 +526,7 @@ def delete_kb_documents(
             conn.execute(f"PRAGMA drop_fts_index('{table_name}')")
             conn.execute(f"PRAGMA create_fts_index('{table_name}', 'id', 'content', 'metadata')")
 
+            record_kb_table_added(get_thread_id(), table_name)
             return f"Deleted {deleted} document(s) from KB table '{table_name}' (FTS index rebuilt)"
 
         finally:
@@ -596,6 +603,7 @@ def add_kb_documents(
             conn.execute(f"PRAGMA drop_fts_index('{table_name}')")
             conn.execute(f"PRAGMA create_fts_index('{table_name}', 'id', 'content', 'metadata')")
 
+            record_kb_table_added(get_thread_id(), table_name)
             return f"Added {len(parsed_docs)} documents to KB table '{table_name}' (FTS index rebuilt)"
 
         finally:

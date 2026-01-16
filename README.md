@@ -34,7 +34,6 @@ data/users/{thread_id}/
   db/      # DuckDB workspace database
   kb/      # DuckDB knowledge base
   mem/     # embedded memory
-  plan/    # reserved for planning files (future)
 ```
 
 ### Tools
@@ -83,6 +82,11 @@ Note: Tool naming is being standardized to verb-first. Some tools may still be e
 
 **Web Search:**
 - `web_search` - Search via SearXNG
+
+**OCR (optional, local):**
+- `ocr_extract_text` - Extract text from images/PDFs (local OCR)
+- `ocr_extract_structured` - OCR + LLM to produce structured JSON
+- `extract_from_image` - Auto-select extraction method
 
 **Other:**
 - Calculator tool

@@ -58,6 +58,112 @@ Next steps:
 - Decide whether to enable LangSmith evals for trajectory logging in CI (optional).
 - If re-enabling Orchestrator/Worker: remove archive guards, restore tool registry entries, and unskip worker/orchestrator tests.
 
+---
+
+## Post-Implementation Issues & Fixes (2026-01-16)
+
+### Issue 1: Checkpoint Schema Missing `checkpoint_ns` Column
+
+**Error**:
+```
+column "checkpoint_ns" does not exist
+```
+
+**Root Cause**: `langgraph-checkpoint-postgres` 2.x introduced a `checkpoint_ns` (namespace) column to support multiple isolated checkpoint states per thread. The existing schema was based on 1.x.
+
+**Fix**: Updated `migrations/001_initial_schema.sql` to add `checkpoint_ns` to all checkpoint tables (init script remains non-destructive; it uses `CREATE TABLE IF NOT EXISTS` only).
+
+```sql
+CREATE TABLE checkpoints (
+    thread_id TEXT NOT NULL,
+    checkpoint_ns TEXT NOT NULL DEFAULT '',  -- NEW: namespace column
+    checkpoint_id TEXT NOT NULL,
+    -- ...
+    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
+);
+
+CREATE TABLE checkpoint_blobs (
+    thread_id TEXT NOT NULL,
+    checkpoint_ns TEXT NOT NULL DEFAULT '',  -- NEW
+    -- ...
+    PRIMARY KEY (thread_id, checkpoint_ns, channel, version)
+);
+
+CREATE TABLE checkpoint_writes (
+    thread_id TEXT NOT NULL,
+    checkpoint_ns TEXT NOT NULL DEFAULT '',  -- NEW
+    -- ...
+    PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id, task_id, idx)
+);
+```
+
+**What `checkpoint_ns` does**: Allows multiple isolated checkpoint states within the same thread. For example, you could have separate states for "draft" vs "published" versions, or different subagent states within a single conversation thread.
+
+**Note on existing DBs**: The init script will not drop or alter existing tables. For a fresh DB it will build the required empty schema. For existing installations, a manual migration (ALTERs) or a controlled reset is required to add `checkpoint_ns`.
+
+### Issue 2: Import Path Changed in langgraph-checkpoint-postgres 2.x
+
+**Error**:
+```
+ModuleNotFoundError: No module named 'langgraph.checkpoint.postgres'
+```
+
+**Root Cause**: Version 2.x of `langgraph-checkpoint-postgres` changed the module name from dot-notation to underscore-notation (PEP 8 compliance).
+
+**Fix**: Updated `src/cassey/storage/checkpoint.py` to try the new import first, with fallback:
+
+```python
+# langgraph-checkpoint-postgres 2.x uses underscore naming
+try:
+    from langgraph_checkpoint_postgres import PostgresSaver
+except ImportError:
+    # Fallback to old import path for 1.x
+    from langgraph.checkpoint.postgres import PostgresSaver
+```
+
+### Issue 3: LangChain Agent Event Format Not Recognized
+
+**Error**: Cassey showed "typing..." for a few seconds then returned "I didn't generate a response. Please try again."
+
+**Root Cause**: The LangChain agent (via `create_agent`) emits events in a different format than expected:
+- Expected: `{"messages": [AIMessage(...)]}`
+- Actual: `{"model": {"messages": [AIMessage(...)]}}`
+
+The `_extract_messages_from_event` method in `src/cassey/channels/base.py` was only checking for direct `messages` keys or nested under `agent`, `output`, `final`—but not `model`.
+
+**Fix**: Extended the event extraction logic to check the `model` key:
+
+```python
+def _extract_messages_from_event(self, event: Any) -> list[BaseMessage]:
+    """Extract messages from LangGraph/LangChain stream events."""
+    if not isinstance(event, dict):
+        return []
+
+    # Direct messages array
+    if isinstance(event.get("messages"), list):
+        return event["messages"]
+
+    # LangChain agent middleware events
+    for key in ("model", "agent", "output", "final"):  # Added "model"
+        value = event.get(key)
+        if isinstance(value, dict) and isinstance(value.get("messages"), list):
+            return value["messages"]
+
+    return []
+```
+
+**Debug logging added**: To catch such issues earlier, added event logging in `stream_agent_response`:
+
+```python
+async for event in self.agent.astream(state, config):
+    event_count += 1
+    if event_count <= 5:  # Log first 5 events for debugging
+        print(f"[DEBUG] Event {event_count}: {type(event).__name__} = {event!s}")
+    # ...
+```
+
+---
+
 ## Detailed Implementation Steps
 
 ### 1) Configuration Switch (Disable A/B)
