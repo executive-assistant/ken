@@ -12,7 +12,6 @@ from telegram.ext import ContextTypes
 from cassey.config import settings
 from cassey.storage.file_sandbox import set_thread_id, clear_thread_id
 from cassey.storage.mem_storage import get_mem_storage
-from cassey.storage.kb_storage import get_kb_storage
 from cassey.storage.db_storage import get_db_storage
 from cassey.storage.meta_registry import load_meta, refresh_meta, format_meta
 
@@ -390,24 +389,10 @@ async def _kb_list(update: Update, thread_id: str) -> None:
     """List KB tables."""
     _set_context(thread_id)
     try:
-        from cassey.storage.kb_tools import _kb_storage
+        from cassey.storage.kb_tools import kb_list
 
-        conn = _kb_storage.get_connection()
-        try:
-            tables = [row[0] for row in conn.execute("SHOW TABLES").fetchall()]
-
-            if not tables:
-                await update.message.reply_text("📚 KB is empty. Use `/kb store <table> <json>` to create a table.")
-                return
-
-            lines = ["📚 *Knowledge Base Tables*\n"]
-            for tbl in tables:
-                count = conn.execute(f"SELECT COUNT(*) FROM {tbl}").fetchone()[0]
-                lines.append(f"• *{tbl}* - {count} documents (FTS indexed)")
-
-            await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
-        finally:
-            conn.close()
+        result = kb_list.invoke({})
+        await update.message.reply_text(result)
     except Exception as e:
         await update.message.reply_text(f"Error listing KB: {e}")
     finally:
@@ -418,48 +403,10 @@ async def _kb_store(update: Update, thread_id: str, table_name: str, documents: 
     """Store documents in KB."""
     _set_context(thread_id)
     try:
-        from cassey.storage.kb_tools import _kb_storage, _ensure_fts_installed
+        from cassey.storage.kb_tools import create_kb_collection
 
-        try:
-            parsed = json.loads(documents)
-        except json.JSONDecodeError as e:
-            await update.message.reply_text(f"❌ Invalid JSON: {e}")
-            return
-
-        if not isinstance(parsed, list):
-            await update.message.reply_text("❌ Documents must be a JSON array")
-            return
-
-        conn = _kb_storage.get_connection()
-        try:
-            _ensure_fts_installed(conn)
-
-            conn.execute(f"DROP TABLE IF EXISTS {table_name}")
-            try:
-                conn.execute(f"PRAGMA drop_fts_index('{table_name}')")
-            except Exception:
-                pass
-
-            conn.execute(f"""
-                CREATE TABLE {table_name} (
-                    id INTEGER PRIMARY KEY,
-                    content TEXT NOT NULL,
-                    metadata TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-
-            for i, doc in enumerate(parsed):
-                content = doc.get("content", "")
-                metadata = doc.get("metadata", "")
-                conn.execute(f"INSERT INTO {table_name} (id, content, metadata) VALUES (?, ?, ?)",
-                           [i, content, metadata])
-
-            conn.execute(f"PRAGMA create_fts_index('{table_name}', 'id', 'content', 'metadata')")
-
-            await update.message.reply_text(f"✅ Stored {len(parsed)} documents in KB table '{table_name}'")
-        finally:
-            conn.close()
+        result = create_kb_collection.invoke({"collection_name": table_name, "documents": documents})
+        await update.message.reply_text(result)
     except Exception as e:
         await update.message.reply_text(f"Error storing documents: {e}")
     finally:
@@ -470,55 +417,10 @@ async def _kb_search(update: Update, thread_id: str, query: str, table_name: str
     """Search KB."""
     _set_context(thread_id)
     try:
-        from cassey.storage.kb_tools import _kb_storage, _ensure_fts_installed
+        from cassey.storage.kb_tools import search_kb
 
-        conn = _kb_storage.get_connection()
-        try:
-            _ensure_fts_installed(conn)
-
-            tables = [table_name] if table_name else [row[0] for row in conn.execute("SHOW TABLES").fetchall()]
-
-            if not tables:
-                await update.message.reply_text("📚 KB is empty")
-                return
-
-            results = []
-            for tbl in tables:
-                try:
-                    fts_query = f"""
-                        SELECT content, metadata, fts_{tbl}.match_bm25(id, ?) AS score
-                        FROM {tbl}
-                        WHERE fts_{tbl}.match_bm25(id, ?) IS NOT NULL
-                        ORDER BY score ASC
-                        LIMIT 5
-                    """
-                    matches = conn.execute(fts_query, [query, query]).fetchall()
-
-                    if matches:
-                        results.append(f"\n*From '{tbl}':*")
-                        for content, metadata, score in matches:
-                            meta = f" [{metadata}]" if metadata else ""
-                            results.append(f"  [{score:.2f}] {content[:60]}...{meta}")
-
-                except Exception:
-                    matches = conn.execute(f"""
-                        SELECT content, metadata FROM {tbl}
-                        WHERE content ILIKE ? LIMIT 5
-                    """, [f"%{query}%"]).fetchall()
-
-                    if matches:
-                        results.append(f"\n*From '{tbl}':*")
-                        for content, metadata in matches:
-                            meta = f" [{metadata}]" if metadata else ""
-                            results.append(f"  • {content[:60]}...{meta}")
-
-            if not results:
-                await update.message.reply_text(f"📚 No results for: {query}")
-            else:
-                await update.message.reply_text(f"📚 *Search results for '{query}':*\n" + "\n".join(results),
-                                              parse_mode="Markdown")
-        finally:
-            conn.close()
+        result = search_kb.invoke({"query": query, "collection_name": table_name, "limit": 5})
+        await update.message.reply_text(result)
     except Exception as e:
         await update.message.reply_text(f"Error searching KB: {e}")
     finally:
@@ -529,31 +431,10 @@ async def _kb_describe(update: Update, thread_id: str, table_name: str) -> None:
     """Describe KB table."""
     _set_context(thread_id)
     try:
-        from cassey.storage.kb_tools import _kb_storage
+        from cassey.storage.kb_tools import describe_kb_collection
 
-        conn = _kb_storage.get_connection()
-        try:
-            tables = [row[0] for row in conn.execute("SHOW TABLES").fetchall()]
-            if table_name not in tables:
-                await update.message.reply_text(f"❌ KB table '{table_name}' not found")
-                return
-
-            count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
-            samples = conn.execute(f"SELECT content, metadata FROM {table_name} LIMIT 3").fetchall()
-
-            lines = [f"📚 *Table '{table_name}'*\n"]
-            lines.append(f"Documents: {count}")
-            lines.append("Has FTS index: Yes")
-
-            if samples:
-                lines.append("\n*Samples:*")
-                for i, (content, metadata) in enumerate(samples, 1):
-                    meta = f" [{metadata}]" if metadata else ""
-                    lines.append(f"{i}. {content[:60]}...{meta}")
-
-            await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
-        finally:
-            conn.close()
+        result = describe_kb_collection.invoke({"collection_name": table_name})
+        await update.message.reply_text(result)
     except Exception as e:
         await update.message.reply_text(f"Error describing table: {e}")
     finally:
@@ -564,27 +445,10 @@ async def _kb_delete(update: Update, thread_id: str, table_name: str) -> None:
     """Delete KB table."""
     _set_context(thread_id)
     try:
-        from cassey.storage.kb_tools import _kb_storage
+        from cassey.storage.kb_tools import drop_kb_collection
 
-        conn = _kb_storage.get_connection()
-        try:
-            tables = [row[0] for row in conn.execute("SHOW TABLES").fetchall()]
-            if table_name not in tables:
-                await update.message.reply_text(f"❌ KB table '{table_name}' not found")
-                return
-
-            count = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
-
-            try:
-                conn.execute(f"PRAGMA drop_fts_index('{table_name}')")
-            except Exception:
-                pass
-
-            conn.execute(f"DROP TABLE {table_name}")
-
-            await update.message.reply_text(f"✅ Deleted KB table '{table_name}' ({count} documents)")
-        finally:
-            conn.close()
+        result = drop_kb_collection.invoke({"collection_name": table_name})
+        await update.message.reply_text(result)
     except Exception as e:
         await update.message.reply_text(f"Error deleting table: {e}")
     finally:

@@ -51,19 +51,19 @@ Tool: write_todos
 
 ---
 
-**Knowledge Base (Persistent Storage)**
+**Knowledge Base (SeekDB)**
 
-For factual queries, KB is your primary source. Use kb_search before web search when appropriate.
+For factual queries, KB is your primary source. Use search_kb before web search when appropriate.
 
 **Storing files:** Read first, check size. SMALL (<5K chars): single doc. MEDIUM (5K-20K): propose 2-5 sections. LARGE (>20K): MUST propose chunking by logical units (articles, chapters, headings ~2K-5K chars). Ask user before storing large files.
 
-Tools: kb_create, kb_search, kb_list, kb_delete, kb_create_table, kb_query
+Tools: create_kb_collection, search_kb, kb_list, describe_kb_collection, drop_kb_collection, add_kb_documents, delete_kb_documents
 
 **Large operations:** Propose first for >5 documents, >10 table rows, multi-file ops.
 
 ---
 
-**Workspace Database (Temporary Data)**
+**Database (Temporary Data)**
 
 For analysis results, intermediate calculations, structuring data during conversation.
 

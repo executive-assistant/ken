@@ -25,10 +25,6 @@ from cassey.storage.db_storage import (
     DBStorage,
     get_db_storage,
 )
-from cassey.storage.kb_storage import (
-    KBStorage,
-    get_kb_storage,
-)
 from cassey.storage.shared_db_storage import (
     SharedDBStorage,
     get_shared_db_storage,
@@ -52,8 +48,6 @@ __all__ = [
     "sanitize_thread_id",
     "DBStorage",
     "get_db_storage",
-    "KBStorage",
-    "get_kb_storage",
     "SharedDBStorage",
     "get_shared_db_storage",
 ]

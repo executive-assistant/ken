@@ -18,13 +18,14 @@ SeekDB uses the term **"collection"** (not "table") for its primary data groupin
 
 Unlike SQL tables with fixed schemas, SeekDB collections are schema-flexible and designed specifically for AI/ML workloads (RAG, semantic search).
 
-**Tool naming decision:** Using "collection" in tool names (`create_kb_collection`, not `create_kb_table`) avoids confusion and matches SeekDB's native terminology.
+**Tool naming decision:** Use `create_kb_collection`/`search_kb` tool names to match SeekDB's native "collection" terminology. Prompts and docs will be updated accordingly.
 
 ---
 
 ## Persistence Model
-- SeekDB runs as an embedded engine per thread. Each thread's SeekDB database is stored under `data/users/{thread_id}/kb/` (a directory per thread).
-- The `pyseekdb.Client(path=directory, database="kb")` in embedded mode persists to disk automatically; it writes `seekdb.db`, `seekdb.db-wal`, and `seekdb.db-shm` files in the specified directory.
+- SeekDB runs as an embedded engine per thread. Each thread's SeekDB database is stored under `data/users/{thread_id}/kb/` (directory).
+- The `pyseekdb.Client(path=directory, database="kb")` in embedded mode persists to disk automatically; it writes `seekdb.db`, `seekdb.db-wal`, and `seekdb.db-shm` files in that directory.
+- Embedded mode relies on `pylibseekdb` (Linux-only). macOS/Windows require a SeekDB server instead.
 - Metadata (collections, indexes, embeddings) lives inside the SeekDB database file, keeping scope bounded and matching our per-user isolation policy.
 
 **Files created (per thread):**
@@ -43,7 +44,7 @@ data/users/{thread_id}/kb/
 - Remove `src/cassey/storage/kb_storage.py` and the DuckDB-specific helper functions.
 - Delete `src/cassey/storage/kb_tools.py` entirely—the tool surface will be reimplemented to talk to SeekDB.
 - Remove KB-related settings (`KB_ROOT`, `get_thread_kb_path`, `KB_BACKEND`, any `duckdb` dependencies in `pyproject.toml`).
-- Remove `rapidfuzz>=3.6.0` from dependencies (no longer needed for fuzzy fallback).
+- **Keep `rapidfuzz>=3.6.0`** - still used by file search (`grep_files`), not KB.
 - Drop any DuckDB FTS references from docs (README, prompts, discussions, TODO).
 
 ### 2. Add SeekDB storage layer
@@ -60,7 +61,9 @@ data/users/{thread_id}/kb/
       Returns: data/users/{thread_id}/kb/
       """
       sanitized = sanitize_thread_id(thread_id)
-      return (settings.SEEKDB_DATA_ROOT / sanitized / "kb").mkdir(parents=True, exist_ok=True)
+      kb_path = settings.SEEKDB_DATA_ROOT / sanitized / "kb"
+      kb_path.mkdir(parents=True, exist_ok=True)
+      return kb_path
 
   @lru_cache(maxsize=128)
   def get_seekdb_client(thread_id: str) -> pyseekdb.Client:
@@ -79,18 +82,18 @@ data/users/{thread_id}/kb/
 - Expose metadata recording (via `meta_registry`) for collection creation/deletion.
 
 ### 3. Rebuild KB tools with "collection" terminology
-- Create `src/cassey/storage/seekdb_tools.py` that implements the tools using SeekDB's collection concept.
-- **Tool names (renamed from DuckDB version):**
+- Create `src/cassey/storage/kb_tools.py` that implements the tools using SeekDB's collection concept.
+- **Tool names (using "collection" terminology):**
 
-  | Old (DuckDB) | New (SeekDB) |
-  |--------------|--------------|
-  | `create_kb_table` | `create_kb_collection` |
-  | `drop_kb_table` | `drop_kb_collection` |
-  | `describe_kb` | `describe_kb_collection` |
-  | `search_kb` | `search_kb` (unchanged - searches across collections) |
-  | `kb_list` | `kb_list` (unchanged - lists collections) |
-  | `add_kb_documents` | `add_kb_documents` (unchanged) |
-  | `delete_kb_documents` | `delete_kb_documents` (unchanged) |
+  | Tool name | SeekDB behavior |
+  |-----------|-----------------|
+  | `create_kb_collection` | Create a SeekDB collection |
+  | `drop_kb_collection` | Delete a SeekDB collection |
+  | `describe_kb_collection` | Describe a collection |
+  | `search_kb` | Search within one or all collections |
+  | `kb_list` | List collections |
+  | `add_kb_documents` | Add documents to a collection |
+  | `delete_kb_documents` | Remove documents from a collection |
 
 - **Tool implementation patterns:**
 
@@ -148,33 +151,23 @@ data/users/{thread_id}/kb/
   ```
 
 - Map output format to be user-friendly (no need to match DuckDB exactly).
-- No RapidFuzz dependency (SeekDB handles fuzzy matching via hybrid search).
 
 ### 4. Settings + dependencies
 - Add SeekDB-specific settings to `src/cassey/config/settings.py`:
   ```python
   # SeekDB KB (embedded mode, per-thread)
   SEEKDB_DATA_ROOT: Path | None = None  # Optional override, defaults to data/users/
-  # Embedding mode: "default" (ONNX), "local" (sentence-transformers), "api" (OpenAI/DashScope)
-  SEEKDB_EMBEDDING_MODE: Literal["default", "local", "api"] = "default"
-  # For "local" mode
-  SEEKDB_LOCAL_MODEL: str = "all-MiniLM-L6-v2"
-  # For "api" mode - reuse existing keys
-  OPENAI_API_KEY: str | None = None
-  DASHSCOPE_API_KEY: str | None = None
   ```
 - Update `.env.example`:
   ```bash
   # SeekDB Knowledge Base (embedded vector + FTS database)
   SEEKDB_DATA_ROOT=data/users
-  SEEKDB_EMBEDDING_MODE=default  # Options: default (ONNX), local (sentence-transformers), api (OpenAI/DashScope)
-  SEEKDB_LOCAL_MODEL=all-MiniLM-L6-v2  # For SEEKDB_EMBEDDING_MODE=local
-  # For api mode, use OPENAI_API_KEY or DASHSCOPE_API_KEY
   ```
 - Update `pyproject.toml`:
   - **Add:** `pyseekdb>=0.1.0` (check actual version on PyPI)
-  - **Optional:** `sentence-transformers` (only if `SEEKDB_EMBEDDING_MODE=local`)
-  - **Remove:** `duckdb>=1.1.0`, `rapidfuzz>=3.6.0`
+  - **Remove:** `duckdb>=1.1.0`
+
+**Note:** RapidFuzz is kept for file search fuzzing (`grep_files`), not used by KB.
 
 ### 5. Tool registry + tests
 - Point `src/cassey/tools/registry.py` KB section to the new SeekDB tool module:
@@ -190,13 +183,10 @@ data/users/{thread_id}/kb/
 ### 6. Docs
 - Replace DuckDB mentions with SeekDB:
   - README: Update KB section to reference SeekDB and "collections" terminology
-  - Prompts: Update TELEGRAM_PROMPT to use "collection" instead of "table":
-    - **Old:** "Use KB to store facts... create_kb_table to create a table"
-    - **New:** "Use KB to store facts... create_kb_collection to create a collection"
+  - Prompts: Update tool names from `create_kb_table`/`drop_kb_table` to `create_kb_collection`/`drop_kb_collection`
   - Discussions: Archive DuckDB-related plans, add SeekDB migration notes
-- Document persistence path: `data/users/{thread_id}/kb/seekdb.db`
+- Document persistence path: `data/users/{thread_id}/kb/` (SeekDB embedded directory)
 - Document rollback approach: "KB uses SeekDB only; rollback requires reverting to commit before this change"
-- **IMPORTANT:** Update any prompt text that says "table" to say "collection" for KB operations
 
 ### 7. Rollback Strategy
 - No runtime toggles - SeekDB is the only supported KB backend.
@@ -213,6 +203,13 @@ data/users/{thread_id}/kb/
 - Hybrid search tested with both vector and full-text queries.
 - Verify `path` is directory (not file) when creating `pyseekdb.Client`.
 - Prompts/docs updated to use "collection" instead of "table".
+
+---
+
+## Implementation Notes (Applied)
+- KB tool names now follow collection terminology: `create_kb_collection`, `describe_kb_collection`, `drop_kb_collection`.
+- Management commands, prompts, README, and tests updated to use the new tool names and `collection_name` parameter.
+- User-facing text updated to say "collections" (not "tables") for KB operations.
 
 ---
 
@@ -273,4 +270,38 @@ results = collection.hybrid_search(
 
 ---
 
-Once we get buy-in on this approach, I can start the implementation by drafting the new storage/tool modules and settings. Let me know if you'd like me to proceed or adjust any detail before coding.  
+## Peer Review & Fixes (2025-01-16)
+
+**Context:** Cassey moving to Docker for all environments (dev + prod), so Linux-only embedded mode is viable.
+
+### Issues Fixed
+
+| Issue | Fix |
+|-------|-----|
+| Tool naming inconsistency | Changed to `create_kb_collection`/`drop_kb_collection`/`describe_kb_collection` |
+| `mkdir()` bug (line 64) | Fixed to return path after mkdir |
+| RapidFuzz confusion | Clarified: kept for file search, removed from KB |
+| Embedding modes over-engineered | Simplified to default ONNX only |
+
+### Remaining Open Questions
+
+1. **Hybrid search API syntax** - The `hybrid_search()` call with `query={"where_document": {"$contains": ...}}` needs verification against actual pyseekdb API. May need adjustment.
+
+2. **Docker ONNX performance** - Consider adding environment variables for ONNX thread optimization:
+   ```dockerfile
+   ENV OMP_NUM_THREADS=4
+   ENV MKL_NUM_THREADS=4
+   ```
+
+3. **Migration path for existing DuckDB KB data** - Plan doesn't address data migration for users with existing KB content. May need a one-time migration script.
+
+### Docker-Specific Notes
+
+- `pylibseekdb` is a Python wheel, no system dependencies needed
+- Works in standard `python:3.12-slim` base images
+- No native compilation required
+
+---
+
+Once we get buy-in on this approach, I can start the implementation by drafting the new storage/tool modules and settings. Let me know if you'd like me to proceed or adjust any detail before coding.
+  

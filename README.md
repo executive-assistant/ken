@@ -32,7 +32,7 @@ All per-thread data lives under `data/users/{thread_id}/`:
 data/users/{thread_id}/
   files/   # user files
   db/      # DuckDB workspace database
-  kb/      # Knowledge base (SeekDB: seekdb.db + WAL + SHM)
+  kb/      # SeekDB embedded KB (seekdb.db + WAL)
   mem/     # embedded memory
 ```
 
@@ -48,7 +48,7 @@ Note: Tool naming is being standardized to verb-first. Some tools may still be e
 - `glob_files` - Find files by pattern (`*.py`, `**/*.json`)
 - `grep_files` - Search file contents with regex
 
-**Workspace Database (per-thread, temporary):**
+**Database (per-thread, temporary):**
 - `db_create_table` - Create table from JSON data
 - `db_query` - Execute SQL queries
 - `db_insert_table` - Insert rows into existing table
@@ -57,13 +57,13 @@ Note: Tool naming is being standardized to verb-first. Some tools may still be e
 - `db_drop_table` - Delete a table
 - `db_export_table` / `db_import_table` - Data export/import
 
-**Knowledge Base (per-thread, vector + full-text search):**
-- `create_kb_collection` - Create a KB collection with vector and FTS indexing
-- `kb_search` - Hybrid search (vector + full-text with RRF rank fusion)
-- `add_kb_documents` - Add documents to existing collection
+**Knowledge Base (per-thread, SeekDB):**
+- `create_kb_collection` - Create KB collection
+- `search_kb` - Full-text or hybrid search
+- `add_kb_documents` - Add documents to existing KB collection
 - `kb_list` - List all KB collections with document counts
-- `describe_kb_collection` - Show collection schema and samples
-- `delete_kb_documents` - Delete documents from collection
+- `describe_kb_collection` - Show KB collection schema and samples
+- `delete_kb_documents` - Delete specific documents
 - `drop_kb_collection` - Delete a KB collection
 
 **Time & Reminders:**
@@ -212,7 +212,7 @@ grep_files("API_KEY", output_mode="content") # Show matching lines
 grep_files("error", output_mode="count")     # Count matches
 ```
 
-## Workspace Database (DB)
+## Database (DB)
 
 Each thread gets its own workspace database for temporary working data:
 
@@ -234,48 +234,38 @@ Available tools:
 
 ## Knowledge Base (KB)
 
-The KB is per-thread (like workspace DB) and persists across sessions. Each conversation has its own KB stored under `data/users/{thread_id}/kb/`.
+The KB is per-thread and persists across sessions. Each conversation has its own KB stored under `data/users/{thread_id}/kb/` (SeekDB embedded directory).
 
-**Current Status:** Migration from DuckDB FTS to SeekDB (AI-native hybrid search) is in progress. See `discussions/seekdb-kb-remove-duckdb-plan-*.md` for details.
-
-### SeekDB (New)
-
-SeekDB provides vector + full-text hybrid search with RRF (Reciprocal Rank Fusion):
+**Implementation:** Uses SeekDB embedded mode with full-text + optional hybrid search. SeekDB embedded is Linux-only (pylibseekdb).
 
 ```
 data/users/{thread_id}/kb/
-  seekdb.db       # Main database (SQLite-based)
-  seekdb.db-wal   # Write-Ahead Log
-  seekdb.db-shm   # Shared memory
+  seekdb.db      # SeekDB main database file
+  seekdb.db-wal  # Write-ahead log
+  seekdb.db-shm  # Shared memory (if needed)
 ```
 
-**SeekDB vs DuckDB KB:**
-- **Vector search** - Semantic similarity with embeddings (384-dim ONNX, no API key)
-- **Hybrid search** - Full-text + vector with RRF rank fusion
-- **Collections** - Schema-flexible storage (not "tables")
-- **Better RAG** - Purpose-built for AI/ML workloads
+KB vs Database:
+- **Database** (`db_*` tools): Temporary working data during analysis
+- **Knowledge Base** (`kb_*` tools): Longer-term reference data for retrieval
 
-KB vs Workspace DB:
-- **Workspace DB** (`db_*` tools): Temporary working data during analysis
-- **Knowledge Base** (`kb_*` / `*_kb_*` tools): Longer-term reference data for retrieval
-
-Available tools (SeekDB):
-- `create_kb_collection(collection_name, documents)` - Create collection with vector + FTS
-- `kb_search(query, collection_name, limit)` - Hybrid search (vector + full-text)
-- `add_kb_documents(collection_name, documents)` - Add documents to collection
-- `kb_list()` - List all collections with document counts
-- `describe_kb_collection(collection_name)` - Show collection schema and samples
+Available tools:
+- `create_kb_collection(collection_name, documents)` - Create SeekDB collection
+- `search_kb(query, collection_name, limit)` - Full-text or hybrid search
+- `add_kb_documents(collection_name, documents)` - Add more documents to existing collection
+- `kb_list()` - List all KB collections with document counts
+- `describe_kb_collection(collection_name)` - Show collection schema and sample documents
 - `delete_kb_documents(collection_name, document_ids)` - Delete specific documents
-- `drop_kb_collection(collection_name)` - Delete entire collection
+- `drop_kb_collection(collection_name)` - Delete a KB collection
 
 **Example usage:**
 ```python
-# Create collection with documents
+# Store documents in SeekDB
 create_kb_collection("notes", '[{"content": "Meeting: Q1 revenue was $1.2M", "metadata": "finance"}]')
 
-# Hybrid search (semantic + full-text)
-kb_search("revenue Q1", "notes")
-# Returns ranked results with distances
+# Search
+search_kb("revenue Q1", "notes")
+# Returns: [1.5] Meeting: Q1 revenue was $1.2M [metadata: finance]
 
 # Add more documents
 add_kb_documents("notes", '[{"content": "Q2 revenue projection: $1.5M"}]')
@@ -283,7 +273,7 @@ add_kb_documents("notes", '[{"content": "Q2 revenue projection: $1.5M"}]')
 # List all collections
 kb_list()
 # Returns: Knowledge Base collections:
-# - notes: 2 documents (vector + FTS indexed)
+# - notes: 2 documents
 ```
 
 ## Python Code Execution
@@ -363,7 +353,7 @@ MW_CONTEXT_EDITING_TRIGGER_TOKENS=100000  # Trigger token count for context trim
 MW_CONTEXT_EDITING_KEEP_TOOL_USES=10   # Number of recent tool uses to keep
 ```
 
-Legacy storage paths (`FILES_ROOT`, `DB_ROOT`, `KB_ROOT`) are deprecated and only used for fallback reads.
+Legacy storage paths (`FILES_ROOT`, `DB_ROOT`) are deprecated and only used for fallback reads.
 
 Notes:
 - `AGENT_RUNTIME=langchain` uses `MW_*` settings for middleware behavior.

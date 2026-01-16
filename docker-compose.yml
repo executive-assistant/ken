@@ -1,6 +1,24 @@
-version: "3.8"
-
 services:
+  cassey:
+    build: .
+    restart: unless-stopped
+    environment:
+      CASSEY_CHANNELS: ${CASSEY_CHANNELS:-http}
+      CHECKPOINT_STORAGE: ${CHECKPOINT_STORAGE:-postgres}
+      POSTGRES_HOST: postgres_db
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-cassey_db}
+      POSTGRES_USER: ${POSTGRES_USER:-cassey}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cassey_password}
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "${CASSEY_PORT:-8000}:8000"
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+
   postgres_db:
     image: postgres:18-alpine
     restart: always

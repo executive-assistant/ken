@@ -68,6 +68,12 @@ CREATE TABLE reminders (
 - [ ] Fix memory FTS indexing/query to use DuckDB match_bm25 (avoid falling back to LIKE)
 - [ ] Wire Loguru `configure_logging()` on startup with optional `LOG_LEVEL`
 - [ ] Context editing middleware (see `discussions/context-editing-middleware-plan-20260116-1655.md`)
+- [ ] **ShellToolMiddleware** (see `discussions/shell-tool-middleware-plan-20260116.md`)
+  - [ ] Add settings to `src/cassey/config/settings.py`
+  - [ ] Wire up middleware in `src/cassey/agent/langchain_agent.py`
+  - [ ] Update `.env.example` with shell settings
+  - [ ] Update prompts in `src/cassey/agent/prompts.py`
+  - [ ] Add unit tests (enabled/disabled states)
 
 ## Ideas / Future Work
 

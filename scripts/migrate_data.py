@@ -4,13 +4,11 @@
 Migrates from:
     data/files/{thread_id}/
     data/db/{thread_id}.db
-    data/kb/{thread_id}.db
 
 To:
     data/users/{thread_id}/
         files/
         db/main.db
-        kb/main.db
 """
 
 import argparse
@@ -61,7 +59,7 @@ def get_source_thread_ids() -> list[str]:
     """
     Get all thread IDs from the old storage structure.
 
-    Scans data/files/, data/db/, and data/kb/ for thread IDs.
+    Scans data/files/ and data/db/ for thread IDs.
     """
     thread_ids = set()
 
@@ -76,13 +74,6 @@ def get_source_thread_ids() -> list[str]:
     db_root = settings.DB_ROOT
     if db_root.exists():
         for item in db_root.iterdir():
-            if item.is_file() and item.suffix == ".db":
-                thread_ids.add(item.stem)
-
-    # From kb directory
-    kb_root = settings.KB_ROOT
-    if kb_root.exists():
-        for item in kb_root.iterdir():
             if item.is_file() and item.suffix == ".db":
                 thread_ids.add(item.stem)
 
@@ -115,11 +106,6 @@ def validate_pre_migration(thread_ids: list[str]) -> list[str]:
             if db_path.exists():
                 total_size += db_path.stat().st_size
 
-            # KB
-            kb_path = settings.KB_ROOT / f"{thread_id}.db"
-            if kb_path.exists():
-                total_size += kb_path.stat().st_size
-
         # Simple disk space check (2x the size needed)
         # This is a basic check; real implementation would use shutil.disk_usage
         if total_size > 0:
@@ -135,9 +121,7 @@ def validate_pre_migration(thread_ids: list[str]) -> list[str]:
     for thread_id in thread_ids:
         files_path = settings.FILES_ROOT / thread_id
         db_path = settings.DB_ROOT / f"{thread_id}.db"
-        kb_path = settings.KB_ROOT / f"{thread_id}.db"
-
-        if not files_path.exists() and not db_path.exists() and not kb_path.exists():
+        if not files_path.exists() and not db_path.exists():
             errors.append(f"No source data found for thread_id: {thread_id}")
 
     return errors
@@ -162,7 +146,6 @@ def migrate_thread(thread_id: str, dry_run: bool = False) -> dict[str, Any]:
         "success": False,
         "files_migrated": 0,
         "db_migrated": False,
-        "kb_migrated": False,
         "errors": [],
     }
 
@@ -171,12 +154,10 @@ def migrate_thread(thread_id: str, dry_run: bool = False) -> dict[str, Any]:
         new_root = settings.USERS_ROOT / safe_thread_id
         new_files_path = new_root / "files"
         new_db_path = new_root / "db" / "main.db"
-        new_kb_path = new_root / "kb" / "main.db"
 
         # Old paths (use sanitized thread_id as old layout also used sanitized names)
         old_files_path = settings.FILES_ROOT / safe_thread_id
         old_db_path = settings.DB_ROOT / f"{safe_thread_id}.db"
-        old_kb_path = settings.KB_ROOT / f"{safe_thread_id}.db"
 
         # Migrate files
         if old_files_path.exists():
@@ -203,17 +184,6 @@ def migrate_thread(thread_id: str, dry_run: bool = False) -> dict[str, Any]:
                 shutil.copy2(old_db_path, new_db_path)
                 result["db_migrated"] = True
                 print(f"  Migrated DB to {new_db_path}")
-
-        # Migrate KB
-        if old_kb_path.exists():
-            if dry_run:
-                result["kb_migrated"] = True
-                print(f"  [DRY RUN] Would migrate KB from {old_kb_path}")
-            else:
-                new_kb_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(old_kb_path, new_kb_path)
-                result["kb_migrated"] = True
-                print(f"  Migrated KB to {new_kb_path}")
 
         result["success"] = True
 
@@ -247,11 +217,8 @@ def verify_migration(thread_ids: list[str]) -> dict[str, Any]:
             new_root = settings.USERS_ROOT / safe_thread_id
             new_files_path = new_root / "files"
             new_db_path = new_root / "db" / "main.db"
-            new_kb_path = new_root / "kb" / "main.db"
-
             old_files_path = settings.FILES_ROOT / safe_thread_id
             old_db_path = settings.DB_ROOT / f"{safe_thread_id}.db"
-            old_kb_path = settings.KB_ROOT / f"{safe_thread_id}.db"
 
             # Verify files count matches
             old_file_count = (
@@ -288,26 +255,6 @@ def verify_migration(thread_ids: list[str]) -> dict[str, Any]:
                 except Exception as e:
                     results["failed_threads"].append(
                         f"{thread_id}: database verification error: {e}"
-                    )
-                    continue
-
-            # Verify KB integrity
-            if old_kb_path.exists() and new_kb_path.exists():
-                try:
-                    conn = sqlite3.connect(str(new_kb_path))
-                    cursor = conn.cursor()
-                    cursor.execute("PRAGMA integrity_check")
-                    integrity_result = cursor.fetchone()
-                    conn.close()
-
-                    if integrity_result[0] != "ok":
-                        results["failed_threads"].append(
-                            f"{thread_id}: KB integrity check failed"
-                        )
-                        continue
-                except Exception as e:
-                    results["failed_threads"].append(
-                        f"{thread_id}: KB verification error: {e}"
                     )
                     continue
 
@@ -480,7 +427,7 @@ def main() -> None:
     # Migration successful
     state["status"] = "completed"
     state["completed_at"] = datetime.now().isoformat()
-    state["completed_steps"] = ["files", "db", "kb"]
+    state["completed_steps"] = ["files", "db"]
     save_migration_state(state)
 
     print("\nMigration completed successfully!")
@@ -497,8 +444,6 @@ def main() -> None:
     for thread_id in thread_ids:
         old_files_path = settings.FILES_ROOT / thread_id
         old_db_path = settings.DB_ROOT / f"{thread_id}.db"
-        old_kb_path = settings.KB_ROOT / f"{thread_id}.db"
-
         if old_files_path.exists():
             shutil.rmtree(old_files_path)
             print(f"  Deleted {old_files_path}")
@@ -506,10 +451,6 @@ def main() -> None:
         if old_db_path.exists():
             old_db_path.unlink()
             print(f"  Deleted {old_db_path}")
-
-        if old_kb_path.exists():
-            old_kb_path.unlink()
-            print(f"  Deleted {old_kb_path}")
 
     print("\nMigration complete!")
 
