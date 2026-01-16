@@ -70,3 +70,30 @@ Add to `src/cassey/agent/prompts.py`:
 - User files remain unchanged and separate.
 - Agent can read/update plan files without exposing them via standard file tools.
 - Completed plan files can be archived and replaced cleanly.
+
+---
+
+## Implementation Status (2026-01-16)
+
+### Implemented
+- **Custom middleware**: `src/cassey/agent/planning_middleware.py`
+  - Uses `abefore_agent` to auto-init plans on complex tasks.
+  - Uses `awrap_tool_call` to log findings/errors after tool calls.
+  - Skips plan tools (`init_plan`, `read_plan`, etc.) to avoid recursion.
+- **Wiring**: `src/cassey/agent/langchain_agent.py`
+  - Middleware is injected before summarization when `MW_PLAN_FILES_ENABLED=true`.
+- **Settings**: `src/cassey/config/settings.py` + `.env.example`
+  - `MW_PLAN_FILES_ENABLED`, `MW_PLAN_AUTO_INIT`, thresholds + max chars.
+- **Tool name alignment**:
+  - Research tool list updated to actual tool names: `search_web`, `search_kb`, `describe_kb`, `kb_list`, `grep_files`, `glob_files`, `read_file`, `list_files`.
+
+### Behavior Summary
+- Auto-inits plan when the user message looks complex (length/keyword heuristics) or starts with `/plan`.
+- Logs **every 2 research tools** to `findings.md` (configurable).
+- Logs tool errors to `progress.md` error table.
+- Works in **LangChain runtime** (async). Sync hooks (`before_agent`/`wrap_tool_call`) are not implemented.
+
+### Known Gaps
+- No sync hook fallbacks; only `abefore_agent`/`awrap_tool_call` are implemented.
+- Not wired for custom graph runtime.
+- Findings/logging is heuristic-based; may require tuning per channel.

@@ -2,7 +2,7 @@
 
 ## Goal
 
-Add OCR (Optical Character Recognition) capability to Cassey for extracting text from images, screenshots, scanned PDFs, and photos.
+Add OCR (Optical Character Recognition) capability to Cassey for extracting text from images, screenshots, scanned PDFs (rasterized to images), and photos.
 
 ## Key Considerations
 
@@ -228,31 +228,35 @@ def choose_ocr_method(instruction: str, image_size_kb: int) -> str:
 ### Installation
 
 ```bash
-# Basic installation
-pip install paddleocr paddlepaddle
+# Recommended (uv)
+uv add "paddleocr>=3.3.2" "paddlepaddle>=3.3.0" "pymupdf>=1.24.0"
 
-# For CPU only (lighter)
-pip install paddlepaddle==2.6.0
-
-# For GPU support (faster)
-pip install paddlepaddle-gpu==2.6.0
+# pip alternative
+pip install "paddleocr>=3.3.2" "paddlepaddle>=3.3.0" "pymupdf>=1.24.0"
 ```
 
 ### Language Support
 
 ```python
-# English (default)
+# English
 ocr = PaddleOCR(lang='en')
 
-# Chinese
+# Chinese (includes Chinese + English)
 ocr = PaddleOCR(lang='ch')
 
 # French
 ocr = PaddleOCR(lang='fr')
-
-# Multilingual
-ocr = PaddleOCR(lang='en')  # Supports 80+ languages
 ```
+
+### Multi-language Support Plan (Future)
+
+We may receive documents in mixed languages. Proposed approach:
+
+1. Add optional `lang` param to OCR tools (default to `OCR_LANG`).
+2. Add `OCR_LANGS` setting (comma-separated list, e.g. `en,ch`).
+3. Support `lang=auto`: run a quick OCR pass per language in `OCR_LANGS`, compute average confidence, and select the best language.
+4. Cache OCR engines per language to avoid repeated initialization.
+5. Document recommended defaults (e.g., `ch` for mixed Chinese/English).
 
 ### Result Format
 
@@ -284,7 +288,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install PaddleOCR and PaddlePaddle (CPU version)
-RUN pip install paddleocr paddlepaddle==2.6.0
+RUN pip install "paddleocr>=3.3.2" "paddlepaddle>=3.3.0" "pymupdf>=1.24.0"
 ```
 
 ### docker-compose.yml
@@ -421,18 +425,121 @@ def extract_from_image(
 
 ## Implementation Checklist
 
-- [ ] Add OCR dependencies to `pyproject.toml` (or a sidecar if PaddleOCR unsupported on 3.13)
+- [x] Add OCR dependencies to `pyproject.toml` (or a sidecar if PaddleOCR unsupported on 3.13)
 - [ ] Update Dockerfile with system dependencies (if local OCR)
-- [ ] Implement `ocr_tool.py` with PaddleOCR
-- [ ] Add lazy initialization for OCR engine
-- [ ] Implement auto-selection logic
-- [ ] Add `extract_from_image` hybrid tool
+- [x] Implement `ocr_tool.py` with PaddleOCR (plus optional Tesseract)
+- [x] Add lazy initialization for OCR engine
+- [x] Implement auto-selection logic
+- [x] Add `extract_from_image` hybrid tool
 - [ ] Add vision model fallback (optional)
-- [ ] Add FileSandbox validation for OCR inputs
-- [ ] Add image extensions to allowed file types
+- [x] Add FileSandbox validation for OCR inputs
+- [x] Add image extensions to allowed file types
 - [ ] Test with various image types
-- [ ] Document OCR capabilities in README
-- [ ] Add language selection (en/ch)
+- [x] Document OCR capabilities in README
+- [x] Add language selection (en/ch)
+
+---
+
+## Implementation Status (2026-01-16)
+
+### Added
+- `src/cassey/tools/ocr_tool.py`
+  - `ocr_extract_text` for local OCR on images/PDFs (scanned pages rasterized via PyMuPDF)
+  - `ocr_extract_structured` for OCR + LLM JSON formatting (JSON-only with retry)
+  - `extract_from_image` for auto selection (`local` vs `vision`)
+  - FileSandbox validation and size limits
+  - Lazy engine load for PaddleOCR and optional Tesseract
+  - PDF text extraction via `pypdf` (text layer only)
+- `src/cassey/config/settings.py`
+  - OCR settings (`OCR_ENGINE`, `OCR_LANG`, `OCR_USE_GPU`, `OCR_MAX_FILE_MB`, `OCR_MAX_PAGES`, `OCR_PDF_DPI`, `OCR_PDF_MIN_TEXT_CHARS`, `OCR_TIMEOUT_SECONDS`, `OCR_STRUCTURED_*`)
+  - Allowed file extensions expanded to common image formats
+- `.env.example` OCR settings block
+- `src/cassey/tools/registry.py` includes OCR tools
+- `README.md` documents OCR tools
+- `tests/test_ocr_tool.py` covers method selection logic
+
+### Dependencies
+- `paddleocr` and `paddlepaddle` added to `pyproject.toml`
+- `pypdf` already present for PDF text extraction
+- `pymupdf` added for scanned PDF rasterization + OCR
+
+### Tests
+- `uv run pytest tests/test_ocr_tool.py` (pass)
+
+---
+
+## Known Gaps / Limits
+- "vision" path currently uses local OCR + LLM formatting (no image-model vision).
+- Tesseract path returns plain text only; JSON output is not supported.
+- Dockerfile updates are still pending if local OCR is used in containers.
+
+---
+
+## Review Verdict (2026-01-16)
+
+**Status**: ✅ **IMPLEMENTED** - PaddleOCR integration is complete and functional.
+
+### What Works
+| Component | Status |
+|-----------|--------|
+| `ocr_extract_text()` | ✅ PaddleOCR + Tesseract support |
+| `ocr_extract_structured()` | ✅ OCR + LLM JSON formatting |
+| `extract_from_image()` | ✅ Auto-selection (local/vision) |
+| FileSandbox validation | ✅ Security checks, size limits |
+| Lazy engine load | ✅ Global cache |
+| Config settings | ✅ `OCR_ENGINE`, `OCR_LANG`, etc. |
+| Tests | ✅ `test_ocr_tool.py` passing |
+
+### Design Assessment
+- **PaddleOCR choice validated**: Lightweight (~50MB), fast, free, excellent Chinese/English support
+- **Hybrid approach works**: Local OCR for simple text, LLM for structured output
+- **Security-conscious**: Uses FileSandbox, file size limits, proper error handling
+- **Implementation matches design**: Core functionality as specified
+
+### Remaining Items
+| Item | Priority | Notes |
+|------|----------|-------|
+| Dockerfile system deps | Low | Only needed if containerizing |
+| Manual image testing | Medium | Real-world validation |
+| Telegram file handler | **High** | Blocks OCR from user uploads |
+
+---
+
+## Next Steps
+
+### 1. Telegram File Upload Handler (BLOCKING)
+
+**Problem**: Users can't upload images via Telegram for OCR because the channel only handles `filters.TEXT`.
+
+**Solution**: Add file upload handler in `src/cassey/channels/telegram.py`:
+
+```python
+# Add handler for documents and photos
+self.application.add_handler(
+    MessageHandler(filters.Document | filters.Photo, self._file_handler)
+)
+
+async def _file_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle file uploads from Telegram."""
+    # 1. Download file from Telegram
+    # 2. Save to thread's file sandbox
+    # 3. Create MessageFormat with file info
+    # 4. Pass to agent (agent can then call ocr_extract_text)
+```
+
+**Files to modify**:
+- `src/cassey/channels/telegram.py` - Add `_file_handler`
+- `src/cassey/channels/base.py` - Extend `MessageFormat` with file attachment support
+- `src/cassey/storage/file_sandbox.py` - Ensure image extensions allowed (already done)
+
+### 2. Test End-to-End
+
+After file handler:
+1. Upload image via Telegram
+2. Cassey acknowledges: "Received `uploads/receipt.jpg`"
+3. Ask: "Extract text from the receipt"
+4. Cassey calls `ocr_extract_text("uploads/receipt.jpg")`
+5. Returns extracted text
 
 ---
 

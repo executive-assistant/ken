@@ -10,6 +10,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.types import Runnable
 
 from cassey.config import settings
+from cassey.agent.langchain_state import CasseyAgentState
 
 
 def _load_create_agent() -> Any:
@@ -33,6 +34,8 @@ def _build_middleware(model: BaseChatModel) -> list[Any]:
             ToolCallLimitMiddleware,
             ToolRetryMiddleware,
             ModelRetryMiddleware,
+            TodoListMiddleware,
+            ContextEditingMiddleware,
         )
     except Exception as exc:  # pragma: no cover - defensive
         raise RuntimeError(
@@ -42,12 +45,29 @@ def _build_middleware(model: BaseChatModel) -> list[Any]:
 
     middleware: list[Any] = []
 
+    if settings.MW_TODO_LIST_ENABLED:
+        middleware.append(TodoListMiddleware())
+
     if settings.MW_SUMMARIZATION_ENABLED:
         middleware.append(
             SummarizationMiddleware(
                 model=model,
                 trigger=("tokens", settings.MW_SUMMARIZATION_MAX_TOKENS),
                 keep=("tokens", settings.MW_SUMMARIZATION_TARGET_TOKENS),
+            )
+        )
+
+    if settings.MW_CONTEXT_EDITING_ENABLED:
+        from langchain.agents.middleware import ClearToolUsesEdit
+
+        middleware.append(
+            ContextEditingMiddleware(
+                edits=[
+                    ClearToolUsesEdit(
+                        trigger=("tokens", settings.MW_CONTEXT_EDITING_TRIGGER_TOKENS),
+                        keep=("tool_uses", settings.MW_CONTEXT_EDITING_KEEP_TOOL_USES),
+                    )
+                ]
             )
         )
 
@@ -98,5 +118,6 @@ def create_langchain_agent(
         tools=tools,
         system_prompt=system_prompt,
         middleware=middleware,
+        state_schema=CasseyAgentState,
         checkpointer=checkpointer,
     )

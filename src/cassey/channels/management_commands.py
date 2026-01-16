@@ -1,4 +1,4 @@
-"""Management slash commands for /mem, /kb, /db, /file.
+"""Management slash commands for /mem, /kb, /db, /file, /meta.
 
 These commands provide direct access to storage systems without needing
 to go through the agent's tool calling mechanism.
@@ -14,6 +14,21 @@ from cassey.storage.file_sandbox import set_thread_id, clear_thread_id
 from cassey.storage.mem_storage import get_mem_storage
 from cassey.storage.kb_storage import get_kb_storage
 from cassey.storage.db_storage import get_db_storage
+from cassey.storage.meta_registry import load_meta, refresh_meta, format_meta
+
+ALLOWED_MEMORY_TYPES = {"profile", "preference", "fact", "task", "note"}
+COMMON_MEMORY_KEYS = {
+    "timezone",
+    "language",
+    "name",
+    "role",
+    "job",
+    "company",
+    "location",
+    "email",
+    "phone",
+    "pronouns",
+}
 
 
 def _get_thread_id(update: Update) -> str:
@@ -63,12 +78,13 @@ async def mem_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await _mem_list(update, thread_id, mem_type)
     elif action == "add":
         # /mem add <content> [type] [key]
-        content = args[1] if len(args) > 1 else ""
+        content, mem_type, key = _parse_mem_add_args(args)
         if not content:
-            await update.message.reply_text("Usage: /mem add <content> [type] [key]")
+            await update.message.reply_text(
+                "Usage: /mem add <content> [type] [key]\n"
+                "Tip: use type=<type> and key=<key> for clarity."
+            )
         else:
-            mem_type = args[2] if len(args) > 2 else None
-            key = args[3] if len(args) > 3 else None
             await _mem_add(update, thread_id, content, mem_type, key)
     elif action == "search":
         # /mem search <query>
@@ -103,19 +119,68 @@ async def _mem_help(update: Update) -> None:
         "Usage:\n"
         "• `/mem` - List all memories\n"
         "• `/mem list [type]` - List by type (profile|preference|fact|task|note)\n"
-        "• `/mem add <content> [type] [key]` - Add a memory\n"
+        "• `/mem add <content> [type] [key]` - Add a memory (or use type= / key=)\n"
         "• `/mem search <query>` - Search memories\n"
         "• `/mem forget <id|key>` - Forget a memory\n"
         "• `/mem update <id> <text>` - Update a memory\n\n"
         "Examples:\n"
-        "• `/mem add I prefer tea over coffee preference`\n"
-        "• `/mem add My office timezone is EST timezone`\n"
+        "• `/mem add I prefer tea over coffee type=preference`\n"
+        "• `/mem add My office timezone is EST key=timezone`\n"
         "• `/mem list preference`\n"
         "• `/mem search timezone`\n"
         "• `/mem forget abc123`\n"
         "• `/mem update abc123 New content here`"
     )
     await update.message.reply_text(help_text, parse_mode="Markdown")
+
+
+def _parse_mem_add_args(args: list[str]) -> tuple[str, str | None, str | None]:
+    """Parse /mem add arguments into content, memory_type, and key."""
+    if len(args) < 2:
+        return "", None, None
+
+    tokens = args[1:]
+    content_tokens: list[str] = []
+    mem_type: str | None = None
+    key: str | None = None
+    explicit_type = False
+
+    def _extract_prefixed(token: str, prefix: str) -> str | None:
+        if token.startswith(prefix + "="):
+            return token[len(prefix) + 1 :]
+        if token.startswith(prefix + ":"):
+            return token[len(prefix) + 1 :]
+        if token.startswith("--" + prefix + "="):
+            return token[len(prefix) + 3 :]
+        if token.startswith("--" + prefix + ":"):
+            return token[len(prefix) + 3 :]
+        return None
+
+    for token in tokens:
+        key_val = _extract_prefixed(token, "key")
+        if key_val:
+            key = key_val
+            continue
+        type_val = _extract_prefixed(token, "type")
+        if type_val:
+            mem_type = type_val.lower()
+            explicit_type = True
+            continue
+        content_tokens.append(token)
+
+    if not explicit_type:
+        if content_tokens:
+            last = content_tokens[-1].lower()
+            if last in ALLOWED_MEMORY_TYPES:
+                mem_type = content_tokens.pop().lower()
+            elif len(content_tokens) >= 2 and content_tokens[-2].lower() in ALLOWED_MEMORY_TYPES:
+                mem_type = content_tokens.pop(-2).lower()
+                key = content_tokens.pop(-1)
+            elif last in COMMON_MEMORY_KEYS:
+                key = content_tokens.pop(-1)
+
+    content = " ".join(content_tokens).strip()
+    return content, mem_type, key
 
 
 async def _mem_add(update: Update, thread_id: str, content: str, mem_type: str | None = None, key: str | None = None) -> None:
@@ -911,3 +976,41 @@ async def _file_delete(update: Update, thread_id: str, path: str) -> None:
         await update.message.reply_text(f"Error deleting: {e}")
     finally:
         _clear_context()
+
+
+# ==================== /meta COMMAND ====================
+
+async def meta_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /meta command for system inventory.
+
+    Usage:
+        /meta                 - Show current inventory
+        /meta refresh         - Rebuild inventory from disk/DB
+        /meta json            - Show raw JSON
+        /meta refresh json    - Refresh and show JSON
+    """
+    if not update.message:
+        return
+
+    thread_id = _get_thread_id(update)
+    args = context.args if context.args else []
+    refresh = False
+    as_json = False
+
+    for arg in args:
+        lower = arg.lower()
+        if lower in {"refresh", "rebuild"}:
+            refresh = True
+        if lower in {"json", "raw"}:
+            as_json = True
+
+    try:
+        meta = await refresh_meta(thread_id) if refresh else load_meta(thread_id)
+        if as_json:
+            text = json.dumps(meta, indent=2)
+            await update.message.reply_text(f"```json\n{text}\n```", parse_mode="Markdown")
+        else:
+            text = format_meta(meta, markdown=True)
+            await update.message.reply_text(text, parse_mode="Markdown")
+    except Exception as e:
+        await update.message.reply_text(f"Error reading meta: {e}")

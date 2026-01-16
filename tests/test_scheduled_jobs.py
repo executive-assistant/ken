@@ -1,6 +1,7 @@
 """Unit tests for ScheduledJob storage."""
 
 import pytest
+import pytest_asyncio
 from datetime import datetime, timedelta
 
 from cassey.storage.scheduled_jobs import (
@@ -8,14 +9,37 @@ from cassey.storage.scheduled_jobs import (
     ScheduledJobStorage,
     get_scheduled_job_storage,
 )
+from cassey.storage.workers import WorkerStorage
 from cassey.utils.cron import parse_cron_next
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def clean_db():
     """Provide a clean database state for each test."""
+
+    async def cleanup_test_data():
+        """Clean up test data from scheduled_jobs and workers tables."""
+        import asyncpg
+        from cassey.config.settings import settings
+
+        conn = await asyncpg.connect(settings.POSTGRES_URL)
+        try:
+            # Delete scheduled jobs for test users (those starting with 'test_')
+            await conn.execute(
+                "DELETE FROM scheduled_jobs WHERE user_id LIKE 'test_%'"
+            )
+            # Delete workers for test users
+            await conn.execute(
+                "DELETE FROM workers WHERE user_id LIKE 'test_%'"
+            )
+        finally:
+            await conn.close()
+
+    await cleanup_test_data()
     storage = ScheduledJobStorage()
     yield storage
+    # Cleanup after test as well
+    await cleanup_test_data()
 
 
 class TestParseCronNext:
@@ -140,6 +164,16 @@ class TestScheduledJobStorage:
     @pytest.mark.asyncio
     async def test_create_job_with_worker(self, clean_db):
         """Test creating a job with a worker."""
+        # First create a worker
+        worker_storage = WorkerStorage()
+        worker = await worker_storage.create(
+            user_id="test_user",
+            thread_id="telegram:test_thread",
+            name="test_worker",
+            tools=[],
+            prompt="Test prompt",
+        )
+
         due_time = datetime.now() + timedelta(hours=1)
 
         job = await clean_db.create(
@@ -148,11 +182,11 @@ class TestScheduledJobStorage:
             task="Test task",
             flow="Test flow",
             due_time=due_time,
-            worker_id=123,
+            worker_id=worker.id,
             name="test_job",
         )
 
-        assert job.worker_id == 123
+        assert job.worker_id == worker.id
         assert job.name == "test_job"
 
     @pytest.mark.asyncio

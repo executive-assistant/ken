@@ -7,6 +7,7 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from langgraph.types import Runnable
 
 from cassey.config import settings
+from cassey.logging import get_logger
 from cassey.storage.file_sandbox import (
     set_thread_id,
     clear_thread_id,
@@ -16,6 +17,8 @@ from cassey.storage.file_sandbox import (
     write_file,
 )
 from cassey.storage.user_registry import UserRegistry
+
+logger = get_logger(__name__)
 
 
 class MessageFormat(dict):
@@ -207,10 +210,12 @@ class BaseChannel(ABC):
         if not isinstance(event, dict):
             return []
 
+        # Direct messages array
         if isinstance(event.get("messages"), list):
             return event["messages"]
 
-        for key in ("agent", "output", "final"):
+        # LangChain agent middleware events: {'model': {'messages': [...]}}
+        for key in ("model", "agent", "output", "final"):
             value = event.get(key)
             if isinstance(value, dict) and isinstance(value.get("messages"), list):
                 return value["messages"]
@@ -269,7 +274,16 @@ class BaseChannel(ABC):
 
             # Stream agent responses
             messages = []
+            event_count = 0
             async for event in self.agent.astream(state, config):
+                event_count += 1
+                if event_count <= 5:
+                    logger.opt(lazy=True).debug(
+                        "Stream event {idx}: {event_type} = {event}",
+                        idx=event_count,
+                        event_type=lambda: type(event).__name__,
+                        event=lambda: event,
+                    )
                 for msg in self._extract_messages_from_event(event):
                     messages.append(msg)
                     # Log each response message if audit is enabled
@@ -281,6 +295,11 @@ class BaseChannel(ABC):
                             message=msg,
                         )
 
+            logger.debug(
+                "Stream summary: {events} events, {messages} messages extracted",
+                events=event_count,
+                messages=len(messages),
+            )
             return messages
         finally:
             # Clear thread_id to prevent leaking between conversations

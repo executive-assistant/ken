@@ -4592,3 +4592,158 @@ Traceback (most recent call last):
           └ <class 'telegram.error.NetworkError'>
 
 telegram.error.NetworkError: httpx.ConnectError: [Errno 8] nodename nor servname provided, or not known
+2026-01-16 16:44:02 | ERROR    | logging:callHandlers:1737 | Exception happened while polling for updates.
+Traceback (most recent call last):
+
+  File "/Users/eddy/Developer/Langgraph/cassey/main.py", line 109, in <module>
+    asyncio.run(main())
+    │       │   └ <function main at 0x10d59df80>
+    │       └ <function run at 0x1054c3880>
+    └ <module 'asyncio' from '/Users/eddy/.local/share/uv/python/cpython-3.13.10-macos-aarch64-none/lib/python3.13/asyncio/__init__...
+
+  File "/Users/eddy/.local/share/uv/python/cpython-3.13.10-macos-aarch64-none/lib/python3.13/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           │      │   └ <coroutine object main at 0x10e950f20>
+           │      └ <function Runner.run at 0x10553e200>
+           └ <asyncio.runners.Runner object at 0x10cfa6270>
+  File "/Users/eddy/.local/share/uv/python/cpython-3.13.10-macos-aarch64-none/lib/python3.13/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           │    │     │                  └ <Task pending name='Task-1' coro=<main() running at /Users/eddy/Developer/Langgraph/cassey/main.py:96> wait_for=<Future pendi...
+           │    │     └ <function BaseEventLoop.run_until_complete at 0x10553bd80>
+           │    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+           └ <asyncio.runners.Runner object at 0x10cfa6270>
+  File "/Users/eddy/.local/share/uv/python/cpython-3.13.10-macos-aarch64-none/lib/python3.13/asyncio/base_events.py", line 712, in run_until_complete
+    self.run_forever()
+    │    └ <function BaseEventLoop.run_forever at 0x10553bce0>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/Users/eddy/.local/share/uv/python/cpython-3.13.10-macos-aarch64-none/lib/python3.13/asyncio/base_events.py", line 683, in run_forever
+    self._run_once()
+    │    └ <function BaseEventLoop._run_once at 0x10553db20>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/Users/eddy/.local/share/uv/python/cpython-3.13.10-macos-aarch64-none/lib/python3.13/asyncio/base_events.py", line 2050, in _run_once
+    handle._run()
+    │      └ <function Handle._run at 0x105474180>
+    └ <Handle Task.task_wakeup()>
+  File "/Users/eddy/.local/share/uv/python/cpython-3.13.10-macos-aarch64-none/lib/python3.13/asyncio/events.py", line 89, in _run
+    self._context.run(self._callback, *self._args)
+    │    │            │    │           │    └ <member '_args' of 'Handle' objects>
+    │    │            │    │           └ <Handle Task.task_wakeup()>
+    │    │            │    └ <member '_callback' of 'Handle' objects>
+    │    │            └ <Handle Task.task_wakeup()>
+    │    └ <member '_context' of 'Handle' objects>
+    └ <Handle Task.task_wakeup()>
+> File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/ext/_utils/networkloop.py", line 134, in network_retry_loop
+    await do_action()
+          └ <function network_retry_loop.<locals>.do_action at 0x10fb66020>
+  File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/ext/_utils/networkloop.py", line 127, in do_action
+    action_cb_task.result()
+    │              └ <method 'result' of '_asyncio.Task' objects>
+    └ <Task finished name='Task-6298' coro=<Updater._start_polling.<locals>.polling_action_cb() done, defined at /Users/eddy/Develo...
+  File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/ext/_updater.py", line 340, in polling_action_cb
+    updates = await self.bot.get_updates(
+                    │    └ <member 'bot' of 'Updater' objects>
+                    └ Updater[bot=ExtBot[token=8567338898:AAFHIs3FSmZDJecT_7XumgcbX0J22q1NK94]]
+  File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/ext/_extbot.py", line 676, in get_updates
+    updates = await super().get_updates(
+  File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/_bot.py", line 4780, in get_updates
+    await self._post(
+          │    └ <function Bot._post at 0x10e72e340>
+          └ ExtBot[token=8567338898:AAFHIs3FSmZDJecT_7XumgcbX0J22q1NK94]
+  File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/_bot.py", line 703, in _post
+    return await self._do_post(
+                 │    └ <function ExtBot._do_post at 0x10e7fee80>
+                 └ ExtBot[token=8567338898:AAFHIs3FSmZDJecT_7XumgcbX0J22q1NK94]
+  File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/ext/_extbot.py", line 372, in _do_post
+    return await super()._do_post(
+  File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/_bot.py", line 732, in _do_post
+    result = await request.post(
+                   │       └ <function BaseRequest.post at 0x10e60a200>
+                   └ <telegram.request._httpxrequest.HTTPXRequest object at 0x10fb0d0c0>
+  File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/request/_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+                   │    └ <function BaseRequest._request_wrapper at 0x10e60a340>
+                   └ <telegram.request._httpxrequest.HTTPXRequest object at 0x10fb0d0c0>
+  File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/request/_baserequest.py", line 375, in _request_wrapper
+    raise exception
+          └ Conflict('Conflict: terminated by other getUpdates request; make sure that only one bot instance is running')
+
+telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+2026-01-16 16:44:08 | ERROR    | logging:callHandlers:1737 | Exception happened while polling for updates.
+Traceback (most recent call last):
+
+  File "/Users/eddy/Developer/Langgraph/cassey/main.py", line 109, in <module>
+    asyncio.run(main())
+    │       │   └ <function main at 0x10d59df80>
+    │       └ <function run at 0x1054c3880>
+    └ <module 'asyncio' from '/Users/eddy/.local/share/uv/python/cpython-3.13.10-macos-aarch64-none/lib/python3.13/asyncio/__init__...
+
+  File "/Users/eddy/.local/share/uv/python/cpython-3.13.10-macos-aarch64-none/lib/python3.13/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           │      │   └ <coroutine object main at 0x10e950f20>
+           │      └ <function Runner.run at 0x10553e200>
+           └ <asyncio.runners.Runner object at 0x10cfa6270>
+  File "/Users/eddy/.local/share/uv/python/cpython-3.13.10-macos-aarch64-none/lib/python3.13/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           │    │     │                  └ <Task pending name='Task-1' coro=<main() running at /Users/eddy/Developer/Langgraph/cassey/main.py:96> wait_for=<Future pendi...
+           │    │     └ <function BaseEventLoop.run_until_complete at 0x10553bd80>
+           │    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+           └ <asyncio.runners.Runner object at 0x10cfa6270>
+  File "/Users/eddy/.local/share/uv/python/cpython-3.13.10-macos-aarch64-none/lib/python3.13/asyncio/base_events.py", line 712, in run_until_complete
+    self.run_forever()
+    │    └ <function BaseEventLoop.run_forever at 0x10553bce0>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/Users/eddy/.local/share/uv/python/cpython-3.13.10-macos-aarch64-none/lib/python3.13/asyncio/base_events.py", line 683, in run_forever
+    self._run_once()
+    │    └ <function BaseEventLoop._run_once at 0x10553db20>
+    └ <_UnixSelectorEventLoop running=True closed=False debug=False>
+  File "/Users/eddy/.local/share/uv/python/cpython-3.13.10-macos-aarch64-none/lib/python3.13/asyncio/base_events.py", line 2050, in _run_once
+    handle._run()
+    │      └ <function Handle._run at 0x105474180>
+    └ <Handle Task.task_wakeup()>
+  File "/Users/eddy/.local/share/uv/python/cpython-3.13.10-macos-aarch64-none/lib/python3.13/asyncio/events.py", line 89, in _run
+    self._context.run(self._callback, *self._args)
+    │    │            │    │           │    └ <member '_args' of 'Handle' objects>
+    │    │            │    │           └ <Handle Task.task_wakeup()>
+    │    │            │    └ <member '_callback' of 'Handle' objects>
+    │    │            └ <Handle Task.task_wakeup()>
+    │    └ <member '_context' of 'Handle' objects>
+    └ <Handle Task.task_wakeup()>
+> File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/ext/_utils/networkloop.py", line 134, in network_retry_loop
+    await do_action()
+          └ <function network_retry_loop.<locals>.do_action at 0x10fb66020>
+  File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/ext/_utils/networkloop.py", line 127, in do_action
+    action_cb_task.result()
+    │              └ <method 'result' of '_asyncio.Task' objects>
+    └ <Task finished name='Task-6300' coro=<Updater._start_polling.<locals>.polling_action_cb() done, defined at /Users/eddy/Develo...
+  File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/ext/_updater.py", line 340, in polling_action_cb
+    updates = await self.bot.get_updates(
+                    │    └ <member 'bot' of 'Updater' objects>
+                    └ Updater[bot=ExtBot[token=8567338898:AAFHIs3FSmZDJecT_7XumgcbX0J22q1NK94]]
+  File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/ext/_extbot.py", line 676, in get_updates
+    updates = await super().get_updates(
+  File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/_bot.py", line 4780, in get_updates
+    await self._post(
+          │    └ <function Bot._post at 0x10e72e340>
+          └ ExtBot[token=8567338898:AAFHIs3FSmZDJecT_7XumgcbX0J22q1NK94]
+  File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/_bot.py", line 703, in _post
+    return await self._do_post(
+                 │    └ <function ExtBot._do_post at 0x10e7fee80>
+                 └ ExtBot[token=8567338898:AAFHIs3FSmZDJecT_7XumgcbX0J22q1NK94]
+  File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/ext/_extbot.py", line 372, in _do_post
+    return await super()._do_post(
+  File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/_bot.py", line 732, in _do_post
+    result = await request.post(
+                   │       └ <function BaseRequest.post at 0x10e60a200>
+                   └ <telegram.request._httpxrequest.HTTPXRequest object at 0x10fb0d0c0>
+  File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/request/_baserequest.py", line 198, in post
+    result = await self._request_wrapper(
+                   │    └ <function BaseRequest._request_wrapper at 0x10e60a340>
+                   └ <telegram.request._httpxrequest.HTTPXRequest object at 0x10fb0d0c0>
+  File "/Users/eddy/Developer/Langgraph/cassey/.venv/lib/python3.13/site-packages/telegram/request/_baserequest.py", line 375, in _request_wrapper
+    raise exception
+          └ Conflict('Conflict: terminated by other getUpdates request; make sure that only one bot instance is running')
+
+telegram.error.Conflict: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
+2026-01-16 16:49:11 | INFO     | logging:callHandlers:1737 | Application is stopping. This might take a moment.
+2026-01-16 16:49:11 | INFO     | logging:callHandlers:1737 | Scheduler has been shut down
+2026-01-16 16:49:11 | INFO     | logging:callHandlers:1737 | Application.stop() complete

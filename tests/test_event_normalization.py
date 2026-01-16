@@ -13,6 +13,7 @@ def test_extract_messages_from_event_shapes():
     message = AIMessage(content="hello")
 
     assert channel._extract_messages_from_event({"messages": [message]}) == [message]
+    assert channel._extract_messages_from_event({"model": {"messages": [message]}}) == [message]
     assert channel._extract_messages_from_event({"agent": {"messages": [message]}}) == [message]
     assert channel._extract_messages_from_event({"output": {"messages": [message]}}) == [message]
     assert channel._extract_messages_from_event({"final": {"messages": [message]}}) == [message]

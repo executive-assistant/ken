@@ -67,6 +67,7 @@ CREATE TABLE reminders (
 - [ ] Validate SQL identifiers (table_name) in db/kb tools to prevent injection
 - [ ] Fix memory FTS indexing/query to use DuckDB match_bm25 (avoid falling back to LIKE)
 - [ ] Wire Loguru `configure_logging()` on startup with optional `LOG_LEVEL`
+- [ ] Context editing middleware (see `discussions/context-editing-middleware-plan-20260116-1655.md`)
 
 ## Ideas / Future Work
 

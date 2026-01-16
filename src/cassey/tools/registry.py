@@ -83,6 +83,18 @@ async def get_reminder_tools() -> list[BaseTool]:
     return _get()
 
 
+async def get_meta_tools() -> list[BaseTool]:
+    """Get system metadata tools."""
+    from cassey.tools.meta_tools import get_meta_tools as _get
+    return _get()
+
+
+async def get_task_state_tools() -> list[BaseTool]:
+    """Get task state tools."""
+    from cassey.tools.task_state_tools import get_task_state_tools as _get
+    return _get()
+
+
 async def get_python_tools() -> list[BaseTool]:
     """Get Python code execution tools."""
     from cassey.tools.python_tool import get_python_tools as _get
@@ -92,6 +104,11 @@ async def get_python_tools() -> list[BaseTool]:
 async def get_search_tools() -> list[BaseTool]:
     """Get web search tools."""
     from cassey.tools.search_tool import get_search_tools as _get
+    return _get()
+
+async def get_ocr_tools() -> list[BaseTool]:
+    """Get OCR tools."""
+    from cassey.tools.ocr_tool import get_ocr_tools as _get
     return _get()
 
 
@@ -109,12 +126,6 @@ async def get_kb_tools() -> list[BaseTool]:
 async def get_memory_tools() -> list[BaseTool]:
     """Get Memory tools for storing and retrieving user memories."""
     from cassey.tools.mem_tools import get_memory_tools as _get
-    return _get()
-
-
-async def get_plan_tools() -> list[BaseTool]:
-    """Get Plan tools for multi-step task planning."""
-    from cassey.tools.plan_tools import get_plan_tools as _get
     return _get()
 
 
@@ -221,6 +232,7 @@ async def get_all_tools() -> list[BaseTool]:
     - Reminder tools (reminder_set with dateparser, reminder_list, reminder_cancel, reminder_edit)
     - Python execution (execute_python for calculations and data processing)
     - Web search (search_web via SearXNG)
+    - OCR (extract text/structured data from images/PDFs)
     - Web scraping (firecrawl_scrape, firecrawl_crawl via Firecrawl API)
     - Confirmation (confirmation_request for large operations)
     - Standard tools (calculator, search)
@@ -248,20 +260,26 @@ async def get_all_tools() -> list[BaseTool]:
     # Add memory tools
     all_tools.extend(await get_memory_tools())
 
-    # Add plan tools
-    all_tools.extend(await get_plan_tools())
-
     # Add time tools
     all_tools.extend(await get_time_tools())
 
     # Add reminder tools
     all_tools.extend(await get_reminder_tools())
 
+    # Add meta tools
+    all_tools.extend(await get_meta_tools())
+
+    # Add task state tools
+    all_tools.extend(await get_task_state_tools())
+
     # Add python tools
     all_tools.extend(await get_python_tools())
 
     # Add search tools
     all_tools.extend(await get_search_tools())
+
+    # Add OCR tools
+    all_tools.extend(await get_ocr_tools())
 
     # Add confirmation tools
     all_tools.extend(await get_confirmation_tools())

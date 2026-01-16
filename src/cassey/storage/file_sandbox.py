@@ -9,6 +9,12 @@ from typing import Literal
 from langchain_core.tools import tool
 
 from cassey.config.settings import settings
+from cassey.storage.meta_registry import (
+    record_file_written,
+    record_file_moved,
+    record_files_removed_by_prefix,
+    record_folder_renamed,
+)
 
 
 # Context variable for thread_id - set by channels when processing messages
@@ -289,6 +295,7 @@ def write_file(file_path: str, content: str) -> str:
         validated_path = sandbox._validate_path(file_path)
         validated_path.parent.mkdir(parents=True, exist_ok=True)
         validated_path.write_text(content, encoding="utf-8")
+        record_file_written(get_thread_id(), file_path)
         return f"File written: {file_path} ({len(content)} bytes)"
     except SecurityError as e:
         return f"Security error: {e}"
@@ -425,6 +432,7 @@ def delete_folder(folder_path: str) -> str:
 
         import shutil
         shutil.rmtree(validated_path)
+        record_files_removed_by_prefix(get_thread_id(), folder_path)
         return f"Folder deleted: {folder_path}/"
     except SecurityError as e:
         return f"Security error: {e}"
@@ -466,6 +474,7 @@ def rename_folder(old_path: str, new_path: str) -> str:
 
         import shutil
         shutil.move(str(old_validated), str(new_validated))
+        record_folder_renamed(get_thread_id(), old_path, new_path)
         return f"Folder renamed: {old_path}/ -> {new_path}/"
     except SecurityError as e:
         return f"Security error: {e}"
@@ -507,6 +516,7 @@ def move_file(source: str, destination: str) -> str:
 
         import shutil
         shutil.move(str(source_validated), str(dest_validated))
+        record_file_moved(get_thread_id(), source, destination)
         return f"File moved: {source} -> {destination}"
     except SecurityError as e:
         return f"Security error: {e}"

@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import tool
 from langgraph.checkpoint.memory import InMemorySaver
 
-from cassey.agent.langchain_agent import create_langchain_agent
+from cassey.agent.langchain_agent import create_langchain_agent, _build_middleware
 from cassey.config import settings
 
 
@@ -25,6 +25,38 @@ def _build_tool_call():
         return ToolCall(name="add", args={"a": 1, "b": 2}, id="call_1")
     except Exception:
         return {"name": "add", "args": {"a": 1, "b": 2}, "id": "call_1"}
+
+
+def test_context_editing_middleware_enabled(monkeypatch):
+    """ContextEditingMiddleware should be included when enabled."""
+    from langchain.agents.middleware import ContextEditingMiddleware
+
+    monkeypatch.setattr(settings, "MW_SUMMARIZATION_ENABLED", False)
+    monkeypatch.setattr(settings, "MW_TOOL_RETRY_ENABLED", False)
+    monkeypatch.setattr(settings, "MW_MODEL_RETRY_ENABLED", False)
+    monkeypatch.setattr(settings, "MW_MODEL_CALL_LIMIT", 0)
+    monkeypatch.setattr(settings, "MW_TOOL_CALL_LIMIT", 0)
+    monkeypatch.setattr(settings, "MW_TODO_LIST_ENABLED", False)
+    monkeypatch.setattr(settings, "MW_CONTEXT_EDITING_ENABLED", True)
+
+    middleware = _build_middleware(ToolBindingFakeChatModel(messages=iter([])))
+    assert any(isinstance(m, ContextEditingMiddleware) for m in middleware)
+
+
+def test_context_editing_middleware_disabled(monkeypatch):
+    """ContextEditingMiddleware should NOT be included when disabled (default)."""
+    from langchain.agents.middleware import ContextEditingMiddleware
+
+    monkeypatch.setattr(settings, "MW_SUMMARIZATION_ENABLED", False)
+    monkeypatch.setattr(settings, "MW_TOOL_RETRY_ENABLED", False)
+    monkeypatch.setattr(settings, "MW_MODEL_RETRY_ENABLED", False)
+    monkeypatch.setattr(settings, "MW_MODEL_CALL_LIMIT", 0)
+    monkeypatch.setattr(settings, "MW_TOOL_CALL_LIMIT", 0)
+    monkeypatch.setattr(settings, "MW_TODO_LIST_ENABLED", False)
+    monkeypatch.setattr(settings, "MW_CONTEXT_EDITING_ENABLED", False)
+
+    middleware = _build_middleware(ToolBindingFakeChatModel(messages=iter([])))
+    assert not any(isinstance(m, ContextEditingMiddleware) for m in middleware)
 
 
 @pytest.mark.asyncio

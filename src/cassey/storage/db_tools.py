@@ -9,6 +9,11 @@ from langchain_core.tools import tool
 from cassey.config import settings
 from cassey.storage.db_storage import DBStorage, validate_identifier
 from cassey.storage.file_sandbox import get_thread_id
+from cassey.storage.meta_registry import (
+    record_db_path,
+    record_db_table_added,
+    record_db_table_removed,
+)
 
 
 # Global database storage instance
@@ -85,6 +90,8 @@ def create_db_table(
     try:
         thread_id = _get_current_thread_id()
         _db_storage.create_table_from_data(table_name, parsed_data, column_list, thread_id)
+        record_db_path(thread_id, settings.get_thread_db_path(thread_id))
+        record_db_table_added(thread_id, table_name)
         return f"Table '{table_name}' created with {len(parsed_data)} rows"
     except Exception as e:
         return f"Error creating table: {str(e)}"
@@ -259,6 +266,7 @@ def delete_db_table(table_name: str) -> str:
             return f"Error: Table '{table_name}' does not exist"
 
         _db_storage.drop_table(table_name, thread_id)
+        record_db_table_removed(thread_id, table_name)
         return f"Table '{table_name}' dropped"
 
     except Exception as e:
@@ -361,6 +369,8 @@ def import_db_table(
             count_result = conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()
             row_count = count_result[0] if count_result else 0
 
+            record_db_path(thread_id, settings.get_thread_db_path(thread_id))
+            record_db_table_added(thread_id, table_name)
             return f"Imported '{filename}' into table '{table_name}' ({row_count} rows)"
         finally:
             conn.close()

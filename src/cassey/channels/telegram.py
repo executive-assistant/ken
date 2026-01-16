@@ -21,6 +21,7 @@ from cassey.channels.management_commands import (
     kb_command,
     db_command,
     file_command,
+    meta_command,
 )
 from cassey.config.settings import settings
 
@@ -88,6 +89,7 @@ class TelegramChannel(BaseChannel):
         self.application.add_handler(CommandHandler("kb", kb_command))
         self.application.add_handler(CommandHandler("db", db_command))
         self.application.add_handler(CommandHandler("file", file_command))
+        self.application.add_handler(CommandHandler("meta", meta_command))
         self.application.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self._message_handler)
         )
@@ -306,11 +308,21 @@ class TelegramChannel(BaseChannel):
                 # Stream agent response
                 messages = await self.stream_agent_response(message)
 
+                print(f"[DEBUG] Received {len(messages)} messages from agent")
+
                 # Send responses back
                 for msg in messages:
                     if hasattr(msg, "content") and msg.content:
                         # send_message will handle markdown conversion
                         await self.send_message(message.conversation_id, msg.content)
+
+                # If no messages were returned, send a fallback
+                if not messages:
+                    print("[DEBUG] No messages from agent - possible empty response")
+                    await self.send_message(
+                        message.conversation_id,
+                        "I didn't generate a response. Please try again."
+                    )
 
             except Exception as e:
                 import traceback

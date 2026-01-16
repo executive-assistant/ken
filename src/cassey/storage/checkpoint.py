@@ -6,7 +6,14 @@ from typing import Any
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.checkpoint.postgres import PostgresSaver
+
+# langgraph-checkpoint-postgres 2.x uses a different import path
+try:
+    from langgraph_checkpoint_postgres import PostgresSaver
+except ImportError:
+    # Fallback to old import path for older versions
+    from langgraph.checkpoint.postgres import PostgresSaver
+
 from psycopg import Connection
 from psycopg_pool import ConnectionPool
 

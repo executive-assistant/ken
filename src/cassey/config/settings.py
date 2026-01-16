@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     MW_TOOL_RETRY_ENABLED: bool = True
     MW_MODEL_RETRY_ENABLED: bool = True
     MW_HITL_ENABLED: bool = False
+    MW_TODO_LIST_ENABLED: bool = True
+    MW_CONTEXT_EDITING_ENABLED: bool = False
+    MW_CONTEXT_EDITING_TRIGGER_TOKENS: int = 100_000
+    MW_CONTEXT_EDITING_KEEP_TOOL_USES: int = 10
 
     # Context Management
     MAX_CONTEXT_TOKENS: int = 100_000  # Max tokens before summarization
@@ -94,6 +98,19 @@ class Settings(BaseSettings):
     FIRECRAWL_API_KEY: str | None = None  # Firecrawl API key
     FIRECRAWL_API_URL: str = "https://api.firecrawl.dev"  # Firecrawl API base URL
 
+    # OCR (local text extraction)
+    OCR_ENGINE: Literal["paddleocr", "tesseract"] = "paddleocr"
+    OCR_LANG: str = "en"
+    OCR_USE_GPU: bool = False
+    OCR_MAX_FILE_MB: int = 10
+    OCR_MAX_PAGES: int = 3
+    OCR_PDF_DPI: int = 200
+    OCR_PDF_MIN_TEXT_CHARS: int = 5
+    OCR_TIMEOUT_SECONDS: int = 30
+    OCR_STRUCTURED_MODEL: str = "fast"
+    OCR_STRUCTURED_PROVIDER: Literal["anthropic", "openai", "zhipu"] | None = None
+    OCR_STRUCTURED_MAX_RETRIES: int = 2
+
     # Allowed file extensions for file operations
     ALLOWED_FILE_EXTENSIONS: set[str] = Field(
         default={
@@ -113,6 +130,14 @@ class Settings(BaseSettings):
             ".bash",
             ".log",
             ".pdf",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".webp",
+            ".tiff",
+            ".tif",
+            ".bmp",
+            ".gif",
         }
     )
 
@@ -272,15 +297,6 @@ class Settings(BaseSettings):
                 return old_path
 
         return new_path
-
-    def get_thread_plan_path(self, thread_id: str) -> Path:
-        """
-        Get plan directory path for a thread.
-
-        Returns: data/users/{thread_id}/plan/
-        """
-        safe_thread_id = self._sanitize_thread_id(thread_id)
-        return (self.USERS_ROOT / safe_thread_id / "plan").resolve()
 
     def is_new_storage_layout(self, thread_id: str) -> bool:
         """
