@@ -11,6 +11,7 @@ Uses wrap_tool_call hook for per-tool tracking.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from typing import TYPE_CHECKING, Any, Callable
@@ -166,6 +167,18 @@ class StatusUpdateMiddleware(AgentMiddleware):
             # Don't let status updates break the agent
             logger.error(f"Failed to send status update to {conv_id}: {e}")
 
+    def _log_debug(self, event: str, **fields: Any) -> None:
+        """Log structured debug info for middleware events."""
+        payload = {
+            "type": "middleware",
+            "name": "StatusUpdateMiddleware",
+            "event": event,
+            "thread_id": get_thread_id(),
+            "conversation_id": self.current_conversation_id,
+            **fields,
+        }
+        logger.info(json.dumps(payload, separators=(",", ":")))
+
     async def abefore_agent(
         self, state: dict[str, Any], runtime: Any
     ) -> dict[str, Any] | None:
@@ -179,7 +192,7 @@ class StatusUpdateMiddleware(AgentMiddleware):
             thread_id = get_thread_id()
             # Extract conversation_id from thread_id (e.g., "TelegramChannel:123" -> "123")
             self.current_conversation_id = thread_id.split(":")[-1] if ":" in thread_id else thread_id
-            logger.info(f"StatusMiddleware: thread_id={thread_id}, conversation_id={self.current_conversation_id}")
+            self._log_debug("start")
 
             # Initialize middleware debug tracking for this run
             self.middleware_debug = get_middleware_debug()
@@ -227,22 +240,29 @@ class StatusUpdateMiddleware(AgentMiddleware):
         # Check for summarization
         summary_result = self.middleware_debug.detect_summarization()
         if summary_result:
-            self.middleware_debug.log_summarization(summary_result, print)
-            if settings.MW_STATUS_UPDATE_ENABLED:
-                await self._send_status(
-                    f"📝 Summarized: {summary_result['messages_before']}→{summary_result['messages_after']} msgs, "
-                    f"{summary_result['tokens_before']}→{summary_result['tokens_after']} tokens "
-                    f"({summary_result['reduction_pct']:.0f}% smaller)"
-                )
-            print(
-                f"[SUMMARIZATION_CONFIG] trigger={settings.MW_SUMMARIZATION_MAX_TOKENS} "
-                f"target={settings.MW_SUMMARIZATION_TARGET_TOKENS}"
+            self._log_debug(
+                "summarization",
+                messages_before=summary_result["messages_before"],
+                messages_after=summary_result["messages_after"],
+                tokens_before=summary_result["tokens_before"],
+                tokens_after=summary_result["tokens_after"],
+                reduction_pct=summary_result["reduction_pct"],
+            )
+            self._log_debug(
+                "summarization_config",
+                trigger=settings.MW_SUMMARIZATION_MAX_TOKENS,
+                target=settings.MW_SUMMARIZATION_TARGET_TOKENS,
             )
 
         # Check for context editing
         context_result = self.middleware_debug.detect_context_editing()
         if context_result:
-            self.middleware_debug.log_context_editing(context_result, print)
+            self._log_debug(
+                "context_editing",
+                tool_uses_before=context_result["tool_uses_before"],
+                tool_uses_after=context_result["tool_uses_after"],
+                reduction_pct=context_result["reduction_pct"],
+            )
 
         return None
 
@@ -263,16 +283,17 @@ class StatusUpdateMiddleware(AgentMiddleware):
         # Track tool calls for retry detection
         if self.retry_tracker:
             self.retry_tracker.record_tool_call()
+        self._log_debug("tool_start", tool_name=tool_name)
 
         # Build status message
-        if self.show_tool_args and tool_args:
-            # Sanitize args for display (truncate, hide sensitive values)
-            args_preview = self._sanitize_args(tool_args)
-            status_msg = f"⚙️ Tool {self.tool_count}: {tool_name} {args_preview}"
-        else:
-            status_msg = f"⚙️ Tool {self.tool_count}: {tool_name}"
-
+        status_msg = f"🛠️ Tool: {tool_name}"
         await self._send_status(status_msg)
+        self._log_debug(
+            "tool_call",
+            tool_name=tool_name,
+            tool_index=self.tool_count,
+            args=self._sanitize_args(tool_args),
+        )
 
         # Execute the tool
         tool_start = time.time()
@@ -280,14 +301,22 @@ class StatusUpdateMiddleware(AgentMiddleware):
             result = await handler(request)
             elapsed = time.time() - tool_start
 
-            # Send completion status
-            await self._send_status(f"✅ {tool_name} ({elapsed:.1f}s)")
+            self._log_debug(
+                "tool_complete",
+                tool_name=tool_name,
+                elapsed=round(elapsed, 2),
+            )
             return result
 
         except Exception as e:
             elapsed = time.time() - tool_start
             error_msg = str(e)[:100]  # Truncate long errors
-            await self._send_status(f"❌ {tool_name} failed ({elapsed:.1f}s): {error_msg}")
+            self._log_debug(
+                "tool_error",
+                tool_name=tool_name,
+                elapsed=round(elapsed, 2),
+                error=error_msg,
+            )
             raise
 
     async def aafter_agent(
@@ -314,11 +343,24 @@ class StatusUpdateMiddleware(AgentMiddleware):
         if self.retry_tracker:
             llm_retry_result = self.retry_tracker.detect_llm_retries()
             if llm_retry_result:
-                self.retry_tracker.log_llm_retries(llm_retry_result, print)
+                self._log_debug(
+                    "llm_retries",
+                    expected=llm_retry_result["expected"],
+                    actual=llm_retry_result["actual"],
+                )
 
             tool_retry_result = self.retry_tracker.detect_tool_retries()
             if tool_retry_result:
-                self.retry_tracker.log_tool_retries(tool_retry_result, print)
+                self._log_debug(
+                    "tool_retries",
+                    expected=tool_retry_result["expected"],
+                    actual=tool_retry_result["actual"],
+                )
+
+        # Log call limit messages if present in state.
+        self._log_call_limit_messages(state)
+        if self._state_has_error(state):
+            self._log_debug("state_dump", messages=self._serialize_messages(state.get("messages", [])))
 
         try:
             if elapsed < 1:
@@ -327,6 +369,7 @@ class StatusUpdateMiddleware(AgentMiddleware):
                 await self._send_status(f"✅ Done in {elapsed:.1f}s{llm_summary}")
         finally:
             # ⚡ CRITICAL: Always cleanup, even on exception
+            self._log_debug("end", elapsed=round(elapsed, 2))
             clear_middleware_debug()
 
         return None
@@ -357,6 +400,43 @@ class StatusUpdateMiddleware(AgentMiddleware):
             args_str = args_str[:100] + "..."
 
         return args_str
+
+    def _log_call_limit_messages(self, state: dict[str, Any]) -> None:
+        """Log when call limit middleware terminates a run."""
+        messages = state.get("messages", [])
+        for msg in messages:
+            content = getattr(msg, "content", "")
+            if not isinstance(content, str):
+                continue
+            if "Model call limits exceeded" in content or "Model call limit reached" in content:
+                self._log_debug("model_call_limit", message=content)
+            if "Tool call limits exceeded" in content or "Tool call limit reached" in content:
+                self._log_debug("tool_call_limit", message=content)
+
+    def _state_has_error(self, state: dict[str, Any]) -> bool:
+        """Return True if the state includes an error message."""
+        messages = state.get("messages", [])
+        for msg in messages:
+            status = getattr(msg, "status", None)
+            if status == "error":
+                return True
+            content = getattr(msg, "content", "")
+            if isinstance(content, str) and ("error" in content.lower() or "failed" in content.lower()):
+                return True
+        return False
+
+    def _serialize_messages(self, messages: list[Any]) -> list[dict[str, Any]]:
+        """Serialize messages for debug dumps."""
+        serialized: list[dict[str, Any]] = []
+        for msg in messages:
+            serialized.append(
+                {
+                    "type": getattr(msg, "type", None),
+                    "status": getattr(msg, "status", None),
+                    "content": getattr(msg, "content", None),
+                }
+            )
+        return serialized
 
 
 def create_status_middleware(

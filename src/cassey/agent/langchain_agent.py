@@ -66,11 +66,53 @@ def _build_middleware(model: BaseChatModel, channel: Any = None) -> list[Any]:
             middleware.append(TodoDisplayMiddleware(channel=channel))
 
     if settings.MW_SUMMARIZATION_ENABLED:
+        summary_prompt = """<role>
+Context Extraction Assistant
+</role>
+
+<primary_objective>
+Your sole objective in this task is to extract the highest quality/most relevant context from the conversation history below.
+</primary_objective>
+
+<objective_information>
+You're nearing the total number of input tokens you can accept, so you must extract the highest quality/most relevant pieces of information from your conversation history.
+This context will then overwrite the conversation history presented below. Because of this, ensure the context you extract is only the most important information to your overall goal.
+</objective_information>
+
+<instructions>
+The conversation history below will be replaced with the context you extract in this step. Because of this, you must do your very best to extract and record all of the most important context from the conversation history.
+You want to ensure that you don't repeat any actions you've already completed, so the context you extract from the conversation history should be focused on the most important information to your overall goal.
+</instructions>
+
+<include_only>
+- User goals, preferences, and constraints
+- Decisions and outcomes
+- Outstanding tasks or next steps
+</include_only>
+
+<exclude>
+- Tool call limits, model call limits, or middleware events
+- Tool error messages or retries
+- Raw tool outputs or logs
+- Debug or system/internal details
+</exclude>
+
+The user will message you with the full message history you'll be extracting context from, to then replace. Carefully read over it all, and think deeply about what information is most important to your overall goal that should be saved:
+
+With all of this in mind, please carefully read over the entire conversation history, and extract the most important and relevant context to replace it so that you can free up space in the conversation history.
+Respond ONLY with the extracted context. Do not include any additional information, or text before or after the extracted context.
+
+<messages>
+Messages to summarize:
+{messages}
+</messages>
+"""
         middleware.append(
             SummarizationMiddleware(
                 model=model,
                 trigger=("tokens", settings.MW_SUMMARIZATION_MAX_TOKENS),
                 keep=("tokens", settings.MW_SUMMARIZATION_TARGET_TOKENS),
+                summary_prompt=summary_prompt,
             )
         )
 
