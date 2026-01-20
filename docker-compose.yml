@@ -39,3 +39,4 @@ services:
 
 volumes:
   pgdata:
+  executive_assistant_data:
