@@ -16,12 +16,13 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from typing import TYPE_CHECKING, Any, Callable
 
 from langchain.agents.middleware import AgentMiddleware
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage
 
 from cassey.config import settings
 from cassey.storage.file_sandbox import get_thread_id
@@ -81,6 +82,18 @@ class TodoDisplayMiddleware(AgentMiddleware):
             return thread_id
         except Exception:
             return None
+
+    def _log_debug(self, event: str, **fields: Any) -> None:
+        """Log structured debug info for middleware events."""
+        payload = {
+            "type": "middleware",
+            "name": "TodoDisplayMiddleware",
+            "event": event,
+            "thread_id": get_thread_id(),
+            "conversation_id": self.current_conversation_id,
+            **fields,
+        }
+        logger.info(json.dumps(payload, separators=(",", ":")))
 
     def _should_send_update(self) -> bool:
         """Check if enough time has passed since last update."""
@@ -203,7 +216,7 @@ class TodoDisplayMiddleware(AgentMiddleware):
             return
 
         try:
-            logger.info(f"Sending todo list to {conv_id}: {len(todos)} tasks")
+            self._log_debug("send_todo", todo_count=len(todos))
 
             # Prefer dedicated todo messages if supported.
             if hasattr(self.channel, "send_todo"):
@@ -213,7 +226,7 @@ class TodoDisplayMiddleware(AgentMiddleware):
                     update=True,
                 )
                 self.last_update_time = time.time()
-                logger.info(f"Todo list sent to {conv_id}")
+                self._log_debug("todo_sent", todo_count=len(todos))
             elif hasattr(self.channel, "send_status"):
                 await self.channel.send_status(
                     conversation_id=conv_id,
@@ -221,7 +234,7 @@ class TodoDisplayMiddleware(AgentMiddleware):
                     update=True,
                 )
                 self.last_update_time = time.time()
-                logger.info(f"Todo list sent to {conv_id}")
+                self._log_debug("todo_sent", todo_count=len(todos))
             else:
                 logger.warning(
                     f"Channel {type(self.channel).__name__} doesn't support todo updates, "
@@ -247,7 +260,7 @@ class TodoDisplayMiddleware(AgentMiddleware):
             self.current_conversation_id = (
                 thread_id.split(":")[-1] if ":" in thread_id else thread_id
             )
-            logger.info(f"TodoDisplayMiddleware: thread_id={thread_id}, conversation_id={self.current_conversation_id}")
+            self._log_debug("start")
         except ValueError:
             logger.warning("TodoDisplayMiddleware: No thread_id in context")
             self.current_conversation_id = None
@@ -291,38 +304,16 @@ class TodoDisplayMiddleware(AgentMiddleware):
             # This is critical because the Command(update={"todos": ...}) hasn't
             # been applied to state yet when this hook runs
             todos = write_todos_calls[0].get("args", {}).get("todos", [])
+            self._log_debug("write_todos", todo_count=len(todos) if isinstance(todos, list) else None)
             if todos:
                 await self._send_todo_list(todos)
-            return None
-
-        # Fallback: parse todo updates from tool messages if present.
-        # This covers cases where tool calls are not available in the last AI message.
-        for msg in reversed(messages):
-            if isinstance(msg, ToolMessage) and isinstance(msg.content, str):
-                if msg.content.startswith("Updated todo list to "):
-                    raw = msg.content.removeprefix("Updated todo list to ").strip()
-                    try:
-                        import ast
-                        todos = ast.literal_eval(raw)
-                    except Exception:
-                        todos = None
-                    if isinstance(todos, list) and todos:
-                        await self._send_todo_list(todos)
-                        return None
-
-        # Fallback: check if todos already in state (from previous turns)
-        if "todos" in state and state["todos"]:
-            await self._send_todo_list(state["todos"])
-
         return None
 
     async def aafter_agent(
         self, state: dict[str, Any], runtime: Any
     ) -> dict[str, Any] | None:
-        """Called when agent completes - send final todo list state."""
-        if "todos" in state and state["todos"]:
-            await self._send_todo_list(state["todos"])
-
+        """Called when agent completes."""
+        self._log_debug("end")
         return None
 
 
