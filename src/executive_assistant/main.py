@@ -228,11 +228,11 @@ async def main() -> None:
                                 bot_name_cache["name"] = bot_name
                             except Exception as e:
                                 logger.warning(
-                                    f"{format_log_context("system", component="telegram", channel="telegram")} reminder_bot_lookup_failed error="{e}""
+                                    f'{format_log_context("system", component="telegram", channel="telegram")} reminder_bot_lookup_failed error="{e}"'
                                 )
                                 bot_name = "unknown"
                         logger.info(
-                            f"{format_log_context("system", component="telegram", channel="telegram")} reminder_send bot="{bot_name}" chat_id={chat_id}"
+                            f'{format_log_context("system", component="telegram", channel="telegram")} reminder_send bot="{bot_name}" chat_id={chat_id}'
                         )
                         await channel.send_message(chat_id, f"🔔 Reminder: {message}")
 
