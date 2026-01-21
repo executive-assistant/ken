@@ -333,7 +333,13 @@ def _maybe_save_ocr_text(validated: Path, text: str) -> None:
     if not text or text.startswith("Error:") or text.startswith("No text"):
         return
     try:
-        output_path = validated.with_suffix(".txt")
+        sandbox = get_sandbox()
+        try:
+            relative = validated.relative_to(sandbox.root)
+        except ValueError:
+            relative = Path(validated.name)
+        output_path = (sandbox.root / relative).with_suffix(".txt")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(text, encoding="utf-8")
     except Exception:
         return
