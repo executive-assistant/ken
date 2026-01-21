@@ -95,8 +95,7 @@ Example configuration (data/admins/mcp.json):
     lines.append("**Configuration File:**")
     lines.append("  Admin: data/admins/mcp.json")
 
-    return "
-".join(lines)
+    return "\n".join(lines)
 
 
 @tool
