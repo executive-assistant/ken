@@ -9,6 +9,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -41,6 +42,7 @@ def register_notification_handler(channel: str, handler):
         handler: Async function that takes (thread_ids, message) and sends notification
     """
     _notification_handlers[channel] = handler
+
 
 
 async def _send_notification(thread_ids: list[str], message: str, channel: str) -> bool:

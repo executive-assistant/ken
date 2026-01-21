@@ -25,8 +25,7 @@ ENV/
 
 # Data directories
 data/
-db/
-files/
+test/
 
 # OS
 .DS_Store
