@@ -532,16 +532,19 @@ async def _mem_list(update: Update, thread_id: str, mem_type: str | None = None,
         for m in memories:
             by_type.setdefault(m["memory_type"], []).append(m)
 
+        index = 1
+        ordered: list[dict] = []
         for mtype, items in by_type.items():
             lines.append(f"\n*{mtype.capitalize()}* ({len(items)}):")
             for m in items[:5]:  # Max 5 per type
-                mem_id = m.get("id")
-                id_note = f"`{mem_id}`" if mem_id else "`unknown-id`"
-                key_note = f" key=`{m['key']}`" if m.get("key") else ""
                 content = m["content"][:60]
                 suffix = "..." if len(m["content"]) > 60 else ""
-                lines.append(f"  • id={id_note}{key_note} — {content}{suffix}")
+                key_val = m.get("key") or "-"
+                lines.append(f"  • [{index}] {content}{suffix} (key: {key_val})")
+                ordered.append(m)
+                index += 1
 
+        _LAST_MEM_LIST[thread_id] = ordered
         await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
     except Exception as e:
         await update.message.reply_text(f"Error listing memories: {e}")
@@ -576,6 +579,17 @@ async def _mem_forget(update: Update, thread_id: str, target: str, chat_type: st
     try:
         storage = get_mem_storage()
 
+        # Try as index from last /mem list
+        if target.isdigit():
+            idx = int(target)
+            entries = _LAST_MEM_LIST.get(thread_id, [])
+            if 1 <= idx <= len(entries):
+                memory = entries[idx - 1]
+                success = storage.delete_memory(memory["id"])
+                if success:
+                    await update.message.reply_text(f"✅ Forgot memory [{idx}]: {memory['content'][:50]}...")
+                    return
+
         # Try as key first
         memory = storage.get_memory_by_key(target)
         if memory:
@@ -600,9 +614,15 @@ async def _mem_update(update: Update, thread_id: str, memory_id: str, content: s
     await _set_context(thread_id, chat_type)
     try:
         storage = get_mem_storage()
-        success = storage.update_memory(memory_id, content=content)
+        target_id = memory_id
+        if memory_id.isdigit():
+            idx = int(memory_id)
+            entries = _LAST_MEM_LIST.get(thread_id, [])
+            if 1 <= idx <= len(entries):
+                target_id = entries[idx - 1]["id"]
+        success = storage.update_memory(target_id, content=content)
         if success:
-            await update.message.reply_text(f"✅ Memory updated: {memory_id[:8]}...\nNew content: {content[:60]}")
+            await update.message.reply_text(f"✅ Memory updated: {target_id[:8]}...\nNew content: {content[:60]}")
         else:
             await update.message.reply_text(f"❌ Memory not found: {memory_id}")
     except Exception as e:
