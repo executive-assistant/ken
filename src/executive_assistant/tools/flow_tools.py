@@ -34,7 +34,13 @@ async def create_flow(
     run_mode: str = "normal",
     middleware: dict[str, Any] | None = None,
 ) -> str:
-    """Create a flow (executor chain) for immediate, scheduled, or recurring execution."""
+    """Create a flow (executor chain) for immediate, scheduled, or recurring execution.
+
+    IMPORTANT:
+    - Agents are defined inline in the `agents` list (AgentSpec).
+    - There is NO create_agent tool and no pre-registered agent requirement.
+    - If create_flow fails, ensure each agent includes: agent_id, description, model, tools, system_prompt.
+    """
     thread_id = get_thread_id()
     if not thread_id:
         return "No thread context available to create a flow."
@@ -44,8 +50,33 @@ async def create_flow(
 
     schedule_type = schedule_type or "immediate"
     schedule_type = schedule_type.lower()
+    if schedule_type == "once":
+        schedule_type = "scheduled"
+    if schedule_type == "cron":
+        schedule_type = "recurring"
 
     due_time = datetime.now()
+
+    # Validate AgentSpec fields early to avoid confusing errors
+    required_fields = {"agent_id", "description", "model", "tools", "system_prompt"}
+    missing_fields = []
+    if not agents:
+        return (
+            "Flow creation requires at least one agent definition. "
+            "There is no create_agent tool; define agents inline with AgentSpec."
+        )
+    for idx, agent in enumerate(agents, start=1):
+        if not isinstance(agent, dict):
+            return f"Agent #{idx} must be a JSON object (dict)."
+        missing = sorted(required_fields - set(agent.keys()))
+        if missing:
+            missing_fields.append((idx, missing))
+    if missing_fields:
+        details = "; ".join([f"agent #{i} missing {fields}" for i, fields in missing_fields])
+        return (
+            "Flow agents must be defined inline (no create_agent tool). "
+            f"Missing required fields: {details}"
+        )
 
     if schedule_type == "scheduled":
         if not schedule_time:
