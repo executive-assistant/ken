@@ -9,7 +9,7 @@
 - [x] Created SkillsBuilder for progressive disclosure (renamed from SkillsMiddleware)
 - [x] Integrated skills into main.py (auto-load on startup)
 - [x] Created 10 skills total:
-  - 5 Core Infrastructure: data_management, progress_tracking, record_keeping, synthesis, workflow_patterns
+  - 5 Core Infrastructure: data_management, progress_tracking, record_keeping, synthesis, tool_combinations
   - 5 Personal Application: task_tracking, information_retrieval, report_generation, planning, organization
 - [x] Integration tests: All 10 skills load successfully, fuzzy matching works
 - [x] **Phase 3: Tool Description Alignment** - Updated DB and file tool descriptions with Minimalist Format

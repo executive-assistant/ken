@@ -26,7 +26,7 @@ Executive Assistant can delegate to specialized agents. The hierarchy is:
 │  - Scheduling & workflows                               │
 │  - Can SPAWN workers                                    │
 │  - Handles dependencies, retries, chains                │
-│  - Tools: spawn_worker, schedule_job, list_jobs         │
+│  - Tools: spawn_worker, schedule_flow, list_flows         │
 └─────────────────────────────────────────────────────────┘
          │           │           │
          ▼           ▼           ▼
@@ -88,7 +88,7 @@ def spawn_worker(name: str, tools: list[str], prompt: str) -> str:
 | Agent | Tools |
 |-------|-------|
 | **Executive Assistant** | All tools + `delegate_to_orchestrator` |
-| **Orchestrator** | `spawn_worker`, `schedule_job`, `list_jobs`, `cancel_job` |
+| **Orchestrator** | `spawn_worker`, `schedule_flow`, `list_flows`, `cancel_flow` |
 | **Workers** | Task-specific subset (e.g., `web_search` + `execute_python` for price checker) |
 
 ## Key Design Decisions
@@ -282,7 +282,7 @@ pipeline_worker = spawn_worker(
    spawn_worker("price_checker", tools=["web_search", "execute_python"], prompt="...")
 
 4. Orchestrator schedules the worker
-   schedule_job(worker_id, cron="0 9 * * *")
+   schedule_flow(worker_id, cron="0 9 * * *")
 
 5. Worker executes on schedule
    At 9am daily: worker runs its task
@@ -308,9 +308,9 @@ When creating workers:
 
 Tools available:
 - spawn_worker(name, tools, prompt): Create a new worker
-- schedule_job(worker_id, schedule): Set up execution time
-- list_jobs(): Show all scheduled jobs
-- cancel_job(job_id): Cancel a scheduled job
+- schedule_flow(worker_id, schedule): Set up execution time
+- list_flows(): Show all scheduled flows
+- cancel_flow(flow_id): Cancel a scheduled flow
 """
 
 ## No New Dependencies
@@ -323,14 +323,14 @@ For the simple approach:
 
 ## Implementation Plan
 
-1. **Phase 1**: Database schema for workers and jobs
+1. **Phase 1**: Database schema for workers and flows
    - `workers` table (name, tools[], prompt, user_id, created_at)
-   - `scheduled_jobs` table (from scheduled_jobs_design.md)
+   - `scheduled_flows` table (from scheduled_flows_design.md)
 
 2. **Phase 2**: Implement Orchestrator
    - `delegate_to_orchestrator` tool for Executive Assistant
    - Orchestrator agent with specialized prompt
-   - `spawn_worker`, `schedule_job`, `list_jobs`, `cancel_job` tools for Orchestrator
+   - `spawn_worker`, `schedule_flow`, `list_flows`, `cancel_flow` tools for Orchestrator
 
 3. **Phase 3**: Worker execution
    - Scheduler invokes workers at scheduled times
@@ -344,4 +344,4 @@ For the simple approach:
 - Only Orchestrator can spawn workers
 - Clear separation: requirements (Executive Assistant+User) vs execution (Orchestrator)
 
-Implementation pending after scheduled jobs system foundation is complete.
+Implementation pending after scheduled flows system foundation is complete.

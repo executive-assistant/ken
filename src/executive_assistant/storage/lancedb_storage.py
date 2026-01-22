@@ -187,6 +187,33 @@ class LanceDBCollection:
 
         return SearchResult(content=content, metadata=metadata, score=score)
 
+    def update_document(self, document_id: str, content: str, metadata: dict | None = None) -> int:
+        """Replace all chunks for a document_id with new content.
+
+        Args:
+            document_id: Document identifier to replace.
+            content: New document content.
+            metadata: Optional metadata to attach (merged with document_id).
+
+        Returns:
+            Number of chunks added.
+        """
+        if not document_id:
+            raise ValueError("document_id is required")
+
+        # Delete existing chunks for this document_id
+        try:
+            self.table.delete(f"document_id = {repr(document_id)}")
+        except Exception:
+            # Best-effort fallback: continue to add new content
+            pass
+
+        meta = {"document_id": document_id}
+        if metadata:
+            meta.update(metadata)
+
+        return self.add_documents([{"content": content, "metadata": meta}])
+
     def delete(self, ids: list[str]) -> int:
         """Delete documents by ID.
 

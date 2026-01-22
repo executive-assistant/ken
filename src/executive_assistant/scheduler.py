@@ -1,8 +1,8 @@
-"""Scheduler for reminder notifications and scheduled job handling using APScheduler.
+"""Scheduler for reminder notifications and scheduled flow handling using APScheduler.
 
 This module runs as a background task, polling the database for:
 1. Pending reminders - sends notifications
-2. Scheduled jobs - archived (orchestrator/worker agents are disabled)
+2. Scheduled flows - executes flow chains
 """
 
 import asyncio
@@ -17,17 +17,10 @@ from executive_assistant.config.settings import settings
 from executive_assistant.logging import format_log_context
 from executive_assistant.storage.file_sandbox import set_thread_id, clear_thread_id
 from executive_assistant.storage.reminder import ReminderStorage, get_reminder_storage
-from executive_assistant.storage.scheduled_jobs import get_scheduled_job_storage
+from executive_assistant.storage.scheduled_flows import get_scheduled_flow_storage
 from executive_assistant.utils.cron import parse_cron_next
 
 logger = logging.getLogger(__name__)
-
-# Archived orchestrator constants
-ORCHESTRATOR_ARCHIVED = True
-ARCHIVED_MESSAGE = (
-    "Orchestrator/worker agents are archived and disabled. "
-    "Use the LangChain runtime and direct tools instead."
-)
 
 # Global scheduler instance
 _scheduler: AsyncIOScheduler | None = None
@@ -43,6 +36,11 @@ def register_notification_handler(channel: str, handler):
     """
     _notification_handlers[channel] = handler
 
+
+
+async def send_notification(thread_ids: list[str], message: str, channel: str) -> bool:
+    """Public wrapper for sending notifications via registered handlers."""
+    return await _send_notification(thread_ids, message, channel)
 
 
 async def _send_notification(thread_ids: list[str], message: str, channel: str) -> bool:
@@ -79,9 +77,6 @@ async def _process_pending_reminders():
 
     # Get reminders due now or in the past
     now = datetime.now()
-    # Look back 1 minute to catch any we might have missed
-    lookback = now - timedelta(minutes=1)
-
     try:
         pending = await storage.get_pending_reminders(now)
 
@@ -148,39 +143,40 @@ async def _process_pending_reminders():
         logger.error(f"Error processing pending reminders: {e}")
 
 
-async def _process_pending_jobs():
-    """Check for and process pending scheduled jobs.
+async def _process_pending_flows():
+    """Check for and process pending scheduled flows.
 
     This is called periodically by the scheduler.
-    Scheduled jobs are archived and marked as failed.
+    Scheduled flows are executed in-process.
     """
-    storage = await get_scheduled_job_storage()
+    storage = await get_scheduled_flow_storage()
 
-    # Get jobs due now or in the past
+    # Get flows due now or in the past
     now = datetime.now()
-    # Look back 1 minute to catch any we might have missed
-    lookback = now - timedelta(minutes=1)
-
     try:
-        pending = await storage.get_due_jobs(now)
+        pending = await storage.get_due_flows(now)
 
         if not pending:
             return
 
-        logger.info(f"Processing {len(pending)} pending scheduled job(s)")
+        logger.info(f"Processing {len(pending)} pending scheduled flow(s)")
 
-        # Mark all due jobs as failed with archived message
-        for job in pending:
-            await storage.mark_failed(job.id, ARCHIVED_MESSAGE)
+        from executive_assistant.flows.runner import execute_flow
 
-        logger.info("Scheduled jobs are archived; marked due jobs as failed.")
+        for flow in pending:
+            try:
+                await execute_flow(flow)
+            except Exception as e:
+                logger.error(f"Flow {flow.id} execution failed: {e}", exc_info=True)
+
+        logger.info("Scheduled flows processed.")
 
     except Exception as e:
-        logger.error(f"Error processing pending jobs: {e}")
+        logger.error(f"Error processing pending flows: {e}")
 
 
 async def start_scheduler():
-    """Start the scheduler for reminders and scheduled jobs.
+    """Start the scheduler for reminders and scheduled flows.
 
     This should be called during application startup.
     """
@@ -202,15 +198,15 @@ async def start_scheduler():
 
     # Run at second 0 of every minute to align scans
     _scheduler.add_job(
-        _process_pending_jobs,
+        _process_pending_flows,
         CronTrigger(second=0),
-        id="check_pending_jobs",
+        id="check_pending_flows",
         replace_existing=True,
     )
 
     _scheduler.start()
     ctx = format_log_context("system", component="scheduler")
-    logger.info(f"{ctx} started (reminders; scheduled jobs archived)")
+    logger.info(f"{ctx} started (reminders; scheduled flows enabled)")
     logger.debug(f"{ctx} start_scheduler returning")
 
 

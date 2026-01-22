@@ -1,7 +1,7 @@
-"""Scheduled jobs storage and management.
+"""Scheduled flows storage and management.
 
-Handles storage and retrieval of scheduled jobs that execute worker agents.
-Supports cron expressions for recurring jobs.
+Handles storage and retrieval of scheduled flows that execute worker agents.
+Supports cron expressions for recurring flows.
 """
 
 import asyncpg
@@ -12,8 +12,8 @@ from executive_assistant.config.settings import settings
 
 
 @dataclass
-class ScheduledJob:
-    """A scheduled job record."""
+class ScheduledFlow:
+    """A scheduled flow record."""
 
     id: int
     user_id: str
@@ -33,36 +33,75 @@ class ScheduledJob:
 
     @property
     def is_pending(self) -> bool:
-        """Check if job is pending."""
+        """Check if flow is pending."""
         return self.status == "pending"
 
     @property
     def is_running(self) -> bool:
-        """Check if job is running."""
+        """Check if flow is running."""
         return self.status == "running"
 
     @property
     def is_completed(self) -> bool:
-        """Check if job completed successfully."""
+        """Check if flow completed successfully."""
         return self.status == "completed"
 
     @property
     def is_failed(self) -> bool:
-        """Check if job failed."""
+        """Check if flow failed."""
         return self.status == "failed"
 
     @property
     def is_recurring(self) -> bool:
-        """Check if job has a recurrence schedule."""
+        """Check if flow has a recurrence schedule."""
         return self.cron is not None and self.cron != ""
 
 
-class ScheduledJobStorage:
-    """Storage for scheduled jobs in PostgreSQL."""
+class ScheduledFlowStorage:
+    """Storage for scheduled flows in PostgreSQL."""
 
     def __init__(self, conn_string: str | None = None) -> None:
-        """Initialize scheduled job storage."""
+        """Initialize scheduled flow storage."""
         self._conn_string = conn_string or settings.POSTGRES_URL
+        self._schema_ready = False
+
+
+    async def _ensure_schema(self, conn: asyncpg.Connection) -> None:
+        """Ensure the scheduled_flows schema exists."""
+        if self._schema_ready:
+            return
+
+        statements = [
+            """
+            CREATE TABLE IF NOT EXISTS scheduled_flows (
+                id SERIAL PRIMARY KEY,
+                user_id VARCHAR(255) NOT NULL,
+                thread_id VARCHAR(255) NOT NULL,
+                worker_id INTEGER REFERENCES workers(id) ON DELETE SET NULL,
+                name VARCHAR(255),
+                task TEXT NOT NULL,
+                flow TEXT NOT NULL,
+                due_time TIMESTAMP NOT NULL,
+                status VARCHAR(20) DEFAULT 'pending',
+                cron VARCHAR(100),
+                created_at TIMESTAMP DEFAULT NOW(),
+                started_at TIMESTAMP,
+                completed_at TIMESTAMP,
+                error_message TEXT,
+                result TEXT
+            );
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_scheduled_flows_due_time ON scheduled_flows(due_time) WHERE status = 'pending';",
+            "CREATE INDEX IF NOT EXISTS idx_scheduled_flows_user_id ON scheduled_flows(user_id);",
+            "CREATE INDEX IF NOT EXISTS idx_scheduled_flows_thread_id ON scheduled_flows(thread_id);",
+            "CREATE INDEX IF NOT EXISTS idx_scheduled_flows_worker_id ON scheduled_flows(worker_id);",
+            "CREATE INDEX IF NOT EXISTS idx_scheduled_flows_status ON scheduled_flows(status);",
+        ]
+
+        for statement in statements:
+            await conn.execute(statement)
+
+        self._schema_ready = True
 
     async def create(
         self,
@@ -74,27 +113,28 @@ class ScheduledJobStorage:
         worker_id: int | None = None,
         name: str | None = None,
         cron: str | None = None,
-    ) -> ScheduledJob:
-        """Create a new scheduled job.
+    ) -> ScheduledFlow:
+        """Create a new scheduled flow.
 
         Args:
-            user_id: User who owns this job
-            thread_id: Thread where job was created
+            user_id: User who owns this flow
+            thread_id: Thread where flow was created
             task: Concrete task description
             flow: Execution flow with conditions/loops
-            due_time: When to execute the job
-            worker_id: Optional worker ID to execute the job
-            name: Optional name for the job
-            cron: Optional cron expression for recurring jobs
+            due_time: When to execute the flow
+            worker_id: Optional worker ID to execute the flow
+            name: Optional name for the flow
+            cron: Optional cron expression for recurring flows
 
         Returns:
-            Created ScheduledJob instance
+            Created ScheduledFlow instance
         """
         conn = await asyncpg.connect(self._conn_string)
+        await self._ensure_schema(conn)
         try:
             row = await conn.fetchrow(
                 """
-                INSERT INTO scheduled_jobs (
+                INSERT INTO scheduled_flows (
                     user_id, thread_id, worker_id, name, task, flow, due_time, cron
                 )
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -112,42 +152,44 @@ class ScheduledJobStorage:
         finally:
             await conn.close()
 
-        return self._row_to_job(row)
+        return self._row_to_flow(row)
 
-    async def get_by_id(self, job_id: int) -> ScheduledJob | None:
-        """Get job by ID.
+    async def get_by_id(self, flow_id: int) -> ScheduledFlow | None:
+        """Get flow by ID.
 
         Args:
-            job_id: Job ID
+            flow_id: Flow ID
 
         Returns:
-            ScheduledJob instance or None if not found
+            ScheduledFlow instance or None if not found
         """
         conn = await asyncpg.connect(self._conn_string)
+        await self._ensure_schema(conn)
         try:
             row = await conn.fetchrow(
-                "SELECT * FROM scheduled_jobs WHERE id = $1",
-                job_id,
+                "SELECT * FROM scheduled_flows WHERE id = $1",
+                flow_id,
             )
         finally:
             await conn.close()
 
-        return self._row_to_job(row) if row else None
+        return self._row_to_flow(row) if row else None
 
-    async def get_due_jobs(self, before: datetime) -> list[ScheduledJob]:
-        """Get all pending jobs due before the given time.
+    async def get_due_flows(self, before: datetime) -> list[ScheduledFlow]:
+        """Get all pending flows due before the given time.
 
         Args:
-            before: Get jobs due at or before this time
+            before: Get flows due at or before this time
 
         Returns:
-            List of ScheduledJob instances that are due
+            List of ScheduledFlow instances that are due
         """
         conn = await asyncpg.connect(self._conn_string)
+        await self._ensure_schema(conn)
         try:
             rows = await conn.fetch(
                 """
-                SELECT * FROM scheduled_jobs
+                SELECT * FROM scheduled_flows
                 WHERE status = 'pending' AND due_time <= $1
                 ORDER BY due_time ASC
                 """,
@@ -156,26 +198,27 @@ class ScheduledJobStorage:
         finally:
             await conn.close()
 
-        return [self._row_to_job(row) for row in rows]
+        return [self._row_to_flow(row) for row in rows]
 
     async def list_by_user(
         self, user_id: str, status: str | None = None
-    ) -> list[ScheduledJob]:
-        """List jobs for a user, optionally filtered by status.
+    ) -> list[ScheduledFlow]:
+        """List flows for a user, optionally filtered by status.
 
         Args:
             user_id: User ID to filter by
             status: Optional status filter
 
         Returns:
-            List of ScheduledJob instances
+            List of ScheduledFlow instances
         """
         conn = await asyncpg.connect(self._conn_string)
+        await self._ensure_schema(conn)
         try:
             if status:
                 rows = await conn.fetch(
                     """
-                    SELECT * FROM scheduled_jobs
+                    SELECT * FROM scheduled_flows
                     WHERE user_id = $1 AND status = $2
                     ORDER BY created_at DESC
                     """,
@@ -185,7 +228,7 @@ class ScheduledJobStorage:
             else:
                 rows = await conn.fetch(
                     """
-                    SELECT * FROM scheduled_jobs
+                    SELECT * FROM scheduled_flows
                     WHERE user_id = $1
                     ORDER BY created_at DESC
                     """,
@@ -194,26 +237,27 @@ class ScheduledJobStorage:
         finally:
             await conn.close()
 
-        return [self._row_to_job(row) for row in rows]
+        return [self._row_to_flow(row) for row in rows]
 
     async def list_by_thread(
         self, thread_id: str, status: str | None = None
-    ) -> list[ScheduledJob]:
-        """List jobs for a thread, optionally filtered by status.
+    ) -> list[ScheduledFlow]:
+        """List flows for a thread, optionally filtered by status.
 
         Args:
             thread_id: Thread ID to filter by
             status: Optional status filter
 
         Returns:
-            List of ScheduledJob instances
+            List of ScheduledFlow instances
         """
         conn = await asyncpg.connect(self._conn_string)
+        await self._ensure_schema(conn)
         try:
             if status:
                 rows = await conn.fetch(
                     """
-                    SELECT * FROM scheduled_jobs
+                    SELECT * FROM scheduled_flows
                     WHERE thread_id = $1 AND status = $2
                     ORDER BY created_at DESC
                     """,
@@ -223,7 +267,7 @@ class ScheduledJobStorage:
             else:
                 rows = await conn.fetch(
                     """
-                    SELECT * FROM scheduled_jobs
+                    SELECT * FROM scheduled_flows
                     WHERE thread_id = $1
                     ORDER BY created_at DESC
                     """,
@@ -232,31 +276,32 @@ class ScheduledJobStorage:
         finally:
             await conn.close()
 
-        return [self._row_to_job(row) for row in rows]
+        return [self._row_to_flow(row) for row in rows]
 
-    async def mark_started(self, job_id: int, started_at: datetime | None = None) -> bool:
-        """Mark job as running.
+    async def mark_started(self, flow_id: int, started_at: datetime | None = None) -> bool:
+        """Mark flow as running.
 
         Args:
-            job_id: Job ID to update
+            flow_id: Flow ID to update
             started_at: Optional start time (defaults to now)
 
         Returns:
-            True if job was updated, False if not found
+            True if flow was updated, False if not found
         """
         if started_at is None:
             started_at = datetime.now()
 
         conn = await asyncpg.connect(self._conn_string)
+        await self._ensure_schema(conn)
         try:
             result = await conn.execute(
                 """
-                UPDATE scheduled_jobs
+                UPDATE scheduled_flows
                 SET status = 'running', started_at = $1
                 WHERE id = $2 AND status = 'pending'
                 """,
                 started_at,
-                job_id,
+                flow_id,
             )
         finally:
             await conn.close()
@@ -264,32 +309,33 @@ class ScheduledJobStorage:
         return "UPDATE 1" in result
 
     async def mark_completed(
-        self, job_id: int, result: str | None = None, completed_at: datetime | None = None
+        self, flow_id: int, result: str | None = None, completed_at: datetime | None = None
     ) -> bool:
-        """Mark job as completed.
+        """Mark flow as completed.
 
         Args:
-            job_id: Job ID to update
+            flow_id: Flow ID to update
             result: Optional result text from execution
             completed_at: Optional completion time (defaults to now)
 
         Returns:
-            True if job was updated, False if not found
+            True if flow was updated, False if not found
         """
         if completed_at is None:
             completed_at = datetime.now()
 
         conn = await asyncpg.connect(self._conn_string)
+        await self._ensure_schema(conn)
         try:
             result = await conn.execute(
                 """
-                UPDATE scheduled_jobs
+                UPDATE scheduled_flows
                 SET status = 'completed', completed_at = $1, result = $2
                 WHERE id = $3 AND status = 'running'
                 """,
                 completed_at,
                 result,
-                job_id,
+                flow_id,
             )
         finally:
             await conn.close()
@@ -297,56 +343,72 @@ class ScheduledJobStorage:
         return "UPDATE 1" in result
 
     async def mark_failed(
-        self, job_id: int, error_message: str, completed_at: datetime | None = None
+        self, flow_id: int, error_message: str, completed_at: datetime | None = None
     ) -> bool:
-        """Mark job as failed.
+        """Mark flow as failed.
 
         Args:
-            job_id: Job ID to update
+            flow_id: Flow ID to update
             error_message: Error message describing the failure
             completed_at: Optional completion time (defaults to now)
 
         Returns:
-            True if job was updated, False if not found
+            True if flow was updated, False if not found
         """
         if completed_at is None:
             completed_at = datetime.now()
 
         conn = await asyncpg.connect(self._conn_string)
+        await self._ensure_schema(conn)
         try:
             result = await conn.execute(
                 """
-                UPDATE scheduled_jobs
+                UPDATE scheduled_flows
                 SET status = 'failed', completed_at = $1, error_message = $2
                 WHERE id = $3 AND status IN ('pending', 'running')
                 """,
                 completed_at,
                 error_message,
-                job_id,
+                flow_id,
             )
         finally:
             await conn.close()
 
         return "UPDATE 1" in result
 
-    async def cancel(self, job_id: int) -> bool:
-        """Cancel a pending job.
+    async def delete(self, flow_id: int) -> bool:
+        """Delete a flow by ID."""
+        conn = await asyncpg.connect(self._conn_string)
+        await self._ensure_schema(conn)
+        try:
+            result = await conn.execute(
+                "DELETE FROM scheduled_flows WHERE id = $1",
+                flow_id,
+            )
+        finally:
+            await conn.close()
+
+        return result and result.startswith("DELETE") and not result.endswith("DELETE 0")
+
+    async def cancel(self, flow_id: int) -> bool:
+        """Cancel a pending flow.
 
         Args:
-            job_id: Job ID to cancel
+            flow_id: Flow ID to cancel
 
         Returns:
-            True if job was cancelled, False if not found or already running
+            True if flow was cancelled, False if not found or already running
         """
         conn = await asyncpg.connect(self._conn_string)
+        await self._ensure_schema(conn)
         try:
             result = await conn.execute(
                 """
-                UPDATE scheduled_jobs
+                UPDATE scheduled_flows
                 SET status = 'cancelled', completed_at = NOW()
                 WHERE id = $1 AND status = 'pending'
                 """,
-                job_id,
+                flow_id,
             )
         finally:
             await conn.close()
@@ -355,36 +417,36 @@ class ScheduledJobStorage:
 
     async def create_next_instance(
         self,
-        parent_job: ScheduledJob,
+        parent_flow: ScheduledFlow,
         next_due_time: datetime,
-    ) -> ScheduledJob | None:
-        """Create the next instance of a recurring job.
+    ) -> ScheduledFlow | None:
+        """Create the next instance of a recurring flow.
 
         Args:
-            parent_job: The completed job to create a follow-up for
+            parent_flow: The completed flow to create a follow-up for
             next_due_time: When the next instance should run
 
         Returns:
-            New ScheduledJob instance, or None if parent wasn't recurring
+            New ScheduledFlow instance, or None if parent wasn't recurring
         """
-        if not parent_job.cron:
+        if not parent_flow.cron:
             return None
 
         return await self.create(
-            user_id=parent_job.user_id,
-            thread_id=parent_job.thread_id,
-            task=parent_job.task,
-            flow=parent_job.flow,
+            user_id=parent_flow.user_id,
+            thread_id=parent_flow.thread_id,
+            task=parent_flow.task,
+            flow=parent_flow.flow,
             due_time=next_due_time,
-            worker_id=parent_job.worker_id,
-            name=parent_job.name,
-            cron=parent_job.cron,
+            worker_id=parent_flow.worker_id,
+            name=parent_flow.name,
+            cron=parent_flow.cron,
         )
 
     @staticmethod
-    def _row_to_job(row) -> ScheduledJob:
-        """Convert database row to ScheduledJob object."""
-        return ScheduledJob(
+    def _row_to_flow(row) -> ScheduledFlow:
+        """Convert database row to ScheduledFlow object."""
+        return ScheduledFlow(
             id=row["id"],
             user_id=row["user_id"],
             thread_id=row["thread_id"],
@@ -404,12 +466,12 @@ class ScheduledJobStorage:
 
 
 # Global storage instance
-_job_storage: ScheduledJobStorage | None = None
+_flow_storage: ScheduledFlowStorage | None = None
 
 
-async def get_scheduled_job_storage() -> ScheduledJobStorage:
-    """Get or create scheduled job storage instance."""
-    global _job_storage
-    if _job_storage is None:
-        _job_storage = ScheduledJobStorage()
-    return _job_storage
+async def get_scheduled_flow_storage() -> ScheduledFlowStorage:
+    """Get or create scheduled flow storage instance."""
+    global _flow_storage
+    if _flow_storage is None:
+        _flow_storage = ScheduledFlowStorage()
+    return _flow_storage

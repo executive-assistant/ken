@@ -53,7 +53,7 @@ async def clean_test_data(db_conn: asyncpg.Connection) -> AsyncGenerator[None, N
     await db_conn.execute("DELETE FROM group_members WHERE user_id LIKE 'test_%'")
     await db_conn.execute("DELETE FROM groups WHERE group_id LIKE 'test_%'")
     await db_conn.execute("DELETE FROM users WHERE user_id LIKE 'test_%'")
-    await db_conn.execute("DELETE FROM scheduled_jobs WHERE user_id LIKE 'test_%'")
+    await db_conn.execute("DELETE FROM scheduled_flows WHERE user_id LIKE 'test_%'")
     await db_conn.execute("DELETE FROM thread_groups WHERE thread_id LIKE 'test_%'")
 
     yield
@@ -63,7 +63,7 @@ async def clean_test_data(db_conn: asyncpg.Connection) -> AsyncGenerator[None, N
     await db_conn.execute("DELETE FROM group_members WHERE user_id LIKE 'test_%'")
     await db_conn.execute("DELETE FROM groups WHERE group_id LIKE 'test_%'")
     await db_conn.execute("DELETE FROM users WHERE user_id LIKE 'test_%'")
-    await db_conn.execute("DELETE FROM scheduled_jobs WHERE user_id LIKE 'test_%'")
+    await db_conn.execute("DELETE FROM scheduled_flows WHERE user_id LIKE 'test_%'")
     await db_conn.execute("DELETE FROM thread_groups WHERE thread_id LIKE 'test_%'")
 
 

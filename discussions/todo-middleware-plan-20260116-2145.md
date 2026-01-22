@@ -59,7 +59,7 @@ Use LangChain's `TodoListMiddleware` for multi-step task tracking and retire the
    - Fix: Changed all test calls from `execute_python("code")` to `execute_python.invoke({"code": "code"})`
    - Result: 32/32 tests pass
 
-2. **Scheduled jobs tests** (`tests/test_scheduled_jobs.py`)
+2. **Scheduled jobs tests** (`tests/test_scheduled_flows.py`)
    - Issue: pytest-asyncio strict mode requires `@pytest_asyncio.fixture` for async fixtures
    - Fix: Changed `@pytest.fixture` to `@pytest_asyncio.fixture` for `clean_db` fixture, added cleanup logic
    - Fix: Updated `test_create_job_with_worker` to create a worker first (FK constraint)

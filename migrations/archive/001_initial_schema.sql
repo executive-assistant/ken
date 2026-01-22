@@ -382,10 +382,10 @@ CREATE INDEX IF NOT EXISTS idx_workers_thread_id ON workers(thread_id);
 CREATE INDEX IF NOT EXISTS idx_workers_status ON workers(status);
 
 -- ============================================================================
--- Scheduled jobs table for Orchestrator-scheduled worker execution
+-- Scheduled flows table for Orchestrator-scheduled worker execution
 -- ============================================================================
 
-CREATE TABLE IF NOT EXISTS scheduled_jobs (
+CREATE TABLE IF NOT EXISTS scheduled_flows (
     id SERIAL PRIMARY KEY,
     user_id VARCHAR(255) NOT NULL,
     thread_id VARCHAR(255) NOT NULL,
@@ -403,11 +403,11 @@ CREATE TABLE IF NOT EXISTS scheduled_jobs (
     result TEXT                          -- Output from worker execution
 );
 
-CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_due_time ON scheduled_jobs(due_time) WHERE status = 'pending';
-CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_user_id ON scheduled_jobs(user_id);
-CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_thread_id ON scheduled_jobs(thread_id);
-CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_worker_id ON scheduled_jobs(worker_id);
-CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_status ON scheduled_jobs(status);
+CREATE INDEX IF NOT EXISTS idx_scheduled_flows_due_time ON scheduled_flows(due_time) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_scheduled_flows_user_id ON scheduled_flows(user_id);
+CREATE INDEX IF NOT EXISTS idx_scheduled_flows_thread_id ON scheduled_flows(thread_id);
+CREATE INDEX IF NOT EXISTS idx_scheduled_flows_worker_id ON scheduled_flows(worker_id);
+CREATE INDEX IF NOT EXISTS idx_scheduled_flows_status ON scheduled_flows(status);
 
 -- ============================================================================
 -- File paths ownership tracking
@@ -479,12 +479,12 @@ COMMENT ON COLUMN workers.tools IS 'Array of tool names (e.g., ["web_search", "e
 COMMENT ON COLUMN workers.prompt IS 'System prompt that defines the worker''s behavior';
 COMMENT ON COLUMN workers.status IS 'active = in use, archived = no longer needed, deleted = removed';
 
-COMMENT ON TABLE scheduled_jobs IS 'Scheduled jobs that execute worker agents at specific times';
-COMMENT ON COLUMN scheduled_jobs.worker_id IS 'Reference to the worker that executes this job';
-COMMENT ON COLUMN scheduled_jobs.task IS 'Concrete task description (e.g., "Check Amazon price for B08X12345")';
-COMMENT ON COLUMN scheduled_jobs.flow IS 'Execution flow (e.g., "fetch price → if < $100 notify, else log")';
-COMMENT ON COLUMN scheduled_jobs.cron IS 'NULL for one-off, or cron expression for recurring jobs';
-COMMENT ON COLUMN scheduled_jobs.result IS 'Output text from worker execution';
+COMMENT ON TABLE scheduled_flows IS 'Scheduled flows that execute worker agents at specific times';
+COMMENT ON COLUMN scheduled_flows.worker_id IS 'Reference to the worker that executes this flow';
+COMMENT ON COLUMN scheduled_flows.task IS 'Concrete task description (e.g., "Check Amazon price for B08X12345")';
+COMMENT ON COLUMN scheduled_flows.flow IS 'Execution flow (e.g., "fetch price → if < $100 notify, else log")';
+COMMENT ON COLUMN scheduled_flows.cron IS 'NULL for one-off, or cron expression for recurring flows';
+COMMENT ON COLUMN scheduled_flows.result IS 'Output text from worker execution';
 
 COMMENT ON COLUMN conversations.structured_summary IS 'Structured summary with topics, facts, decisions, tasks, open questions - JSONB format';
 COMMENT ON COLUMN conversations.active_request IS 'Latest user request (intent-first) - always shows current dominant intent';

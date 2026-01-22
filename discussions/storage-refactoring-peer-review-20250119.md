@@ -340,7 +340,7 @@ ARCHIVED_MESSAGE = (
 )
 ```
 
-**Simplified `_process_pending_jobs()`** to mark scheduled jobs as failed instead of attempting execution.
+**Simplified `_process_pending_flows()`** to mark scheduled flows as failed instead of attempting execution.
 
 **Deleted:** `src/executive_assistant/tools/orchestrator_tools.py` - File removed entirely
 

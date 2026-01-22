@@ -51,7 +51,7 @@
 - ✅ Created 4 core infrastructure skills:
   - ✅ record_keeping - Information lifecycle (Record → Organize → Retrieve)
   - ✅ progress_tracking - Measuring change over time
-  - ✅ workflow_patterns - How to combine tools effectively
+  - ✅ tool_combinations - How to combine tools effectively
   - ✅ synthesis - Combining multiple information sources
 - ✅ Created 5 personal application skills:
   - ✅ task_tracking - Timesheets, habits, expenses
@@ -72,7 +72,7 @@
 **Files Created (Phase 2):**
 - `src/executive_assistant/skills/content/core/record_keeping.md` (~350 lines)
 - `src/executive_assistant/skills/content/core/progress_tracking.md` (~300 lines)
-- `src/executive_assistant/skills/content/core/workflow_patterns.md` (~400 lines)
+- `src/executive_assistant/skills/content/core/tool_combinations.md` (~400 lines)
 - `src/executive_assistant/skills/content/core/synthesis.md` (~350 lines)
 - `src/executive_assistant/skills/content/personal/task_tracking.md` (~250 lines)
 - `src/executive_assistant/skills/content/personal/information_retrieval.md` (~280 lines)
@@ -401,7 +401,7 @@ def create_db_table(table_name: str, columns: str) -> str:
 
 1. **Skills teach workflows:**
    - `data_management` skill: "DB vs VS vs Files decision framework"
-   - `workflow_patterns` skill: "How to combine tools effectively"
+   - `tool_combinations` skill: "How to combine tools effectively"
    - `task_tracking` skill: "Timesheet/habit/expense workflows"
 
 2. **Tool descriptions should teach selection:**
@@ -663,7 +663,7 @@ Both are needed - tool descriptions for single-tool decisions, skills for multi-
    - How to track changes over time
    - How to analyze trends and patterns
 
-4. **workflow_patterns** - How to combine tools effectively
+4. **tool_combinations** - How to combine tools effectively
    - Common tool combinations
    - Multi-step workflow patterns
    - Efficient tool sequencing
@@ -821,7 +821,7 @@ def load_skill(skill_name: str) -> str:
     - data_management: DB vs VS vs Files decision framework
     - record_keeping: Information lifecycle (Record → Organize → Retrieve)
     - progress_tracking: Measuring change over time
-    - workflow_patterns: How to combine tools effectively
+    - tool_combinations: How to combine tools effectively
     - synthesis: Combining multiple information sources
 
     Available Personal Skills (Phase 1):
@@ -910,7 +910,7 @@ Create markdown files in `src/executive_assistant/skills/content/core/`:
 - `data_management.md` - DB vs VS vs Files decision framework
 - `record_keeping.md` - Information lifecycle patterns
 - `progress_tracking.md` - Measuring change over time
-- `workflow_patterns.md` - Tool combination patterns
+- `tool_combinations.md` - Tool combination patterns
 - `synthesis.md` - Information processing patterns
 
 **3.2 Create 5 Personal Application Skills**
@@ -1045,7 +1045,7 @@ src/executive_assistant/
 │       │   ├── data_management.md
 │       │   ├── record_keeping.md
 │       │   ├── progress_tracking.md
-│       │   ├── workflow_patterns.md
+│       │   ├── tool_combinations.md
 │       │   └── synthesis.md
 │       └── personal/            # Personal Application Skills (5 in Phase 1)
 │           ├── task_tracking.md
@@ -1161,7 +1161,7 @@ Uses existing:
 - ✅ 4 core infrastructure skills:
   - ✅ record_keeping - Information lifecycle (Record → Organize → Retrieve)
   - ✅ progress_tracking - Measuring change over time
-  - ✅ workflow_patterns - How to combine tools effectively
+  - ✅ tool_combinations - How to combine tools effectively
   - ✅ synthesis - Combining multiple information sources
 - ✅ 5 personal application skills:
   - ✅ task_tracking - Timesheets, habits, expenses
@@ -1347,7 +1347,7 @@ The skills implementation is **100% complete** for Phase 1-2 and follows LangCha
 5. Auto-loading on startup via `main.py`
 
 ✅ **All 10 Skills Created:**
-- 5 core infrastructure skills (data_management, record_keeping, progress_tracking, workflow_patterns, synthesis)
+- 5 core infrastructure skills (data_management, record_keeping, progress_tracking, tool_combinations, synthesis)
 - 5 personal application skills (task_tracking, information_retrieval, report_generation, planning, organization)
 
 ✅ **Integration Complete:**

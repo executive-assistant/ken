@@ -196,7 +196,7 @@ executive_assistant/
 │   │   ├── user_registry.py     # User identity & merge management
 │   │   ├── meta_registry.py     # Metadata/ownership tracking
 │   │   ├── reminder.py          # Reminder scheduling
-│   │   ├── scheduled_jobs.py    # APScheduler integration
+│   │   ├── scheduled_flows.py    # APScheduler integration
 │   │   ├── chunking.py         # Document chunking for vector store
 │   │   ├── mem_storage.py      # Embedded memory storage
 │   │   ├── helpers.py          # Storage helper functions
@@ -247,7 +247,7 @@ executive_assistant/
 │   ├── test_lancedb_vs.py       # Vector store tests
 │   ├── test_python_tool.py      # Python execution tests
 │   ├── test_status_middleware.py # Middleware tests
-│   ├── test_scheduled_jobs.py   # Scheduler tests
+│   ├── test_scheduled_flows.py   # Scheduler tests
 │   ├── test_temporal_api.py     # Temporal integration tests
 │   └── conftest.py             # Pytest fixtures
 │
@@ -465,7 +465,7 @@ data/
   - `vs_collections`: Vector store ownership per thread
 - **Operations**: Track all create/delete operations
 
-**Reminder (`reminder.py`, `scheduled_jobs.py`)**
+**Reminder (`reminder.py`, `scheduled_flows.py`)**
 - **Purpose**: Scheduled notification system
 - **Backend**: APScheduler (in-memory) + PostgreSQL persistence
 - **Features**:
@@ -474,6 +474,12 @@ data/
   - Multi-thread triggering (notify across conversations)
   - Timezone-aware scheduling
 - **Table**: `reminders`
+
+### Analytics DB (DuckDB)
+
+- Context-scoped DuckDB for analytics queries.
+- Stored at `data/users/{user_id}/analytics/duckdb.db` or `data/groups/{group_id}/analytics/duckdb.db`.
+- Tool: `query_analytics_db` (read/write SQL for analysis).
 
 ### 4. Tools Layer (`src/executive_assistant/tools/`)
 
@@ -1038,7 +1044,7 @@ docker compose build --no-cache executive_assistant
 
 **System Tests**
 - `test_integration_pg.py`: Full PostgreSQL integration
-- `test_scheduled_jobs.py`: Reminder scheduling
+- `test_scheduled_flows.py`: Reminder scheduling
 
 ### Test Fixtures (`conftest.py`)
 - Mock LLM responses

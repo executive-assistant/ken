@@ -462,6 +462,86 @@ def describe_db_table(table_name: str, scope: Literal["context", "shared"] = "co
 
 @tool
 @require_permission("write")
+def add_db_column(
+    table_name: str,
+    column_name: str,
+    column_type: str = "TEXT",
+    scope: Literal["context", "shared"] = "context",
+) -> str:
+    """Add a column to an existing table. [DB]
+
+    USE THIS WHEN: You need to extend a table schema with a new column.
+
+    Args:
+        table_name: Name of the table to alter.
+        column_name: New column name (letters, numbers, underscore).
+        column_type: SQLite column type (TEXT, INTEGER, REAL, etc.).
+        scope: "context" (default) for group/thread-scoped storage,
+               "shared" for organization-wide shared storage (admin-only writes).
+
+    Returns:
+        Success message or error.
+    """
+    try:
+        validate_identifier(table_name)
+        validate_identifier(column_name)
+        db = _get_db_with_scope(scope)
+
+        if not db.table_exists(table_name):
+            return f"Error: Table '{table_name}' does not exist"
+
+        existing = {col["name"] for col in db.get_table_info(table_name)}
+        if column_name in existing:
+            return f"Error: Column '{column_name}' already exists in '{table_name}'"
+
+        db.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+        db.conn.commit()
+        return f"Added column '{column_name}' ({column_type}) to '{table_name}'"
+    except Exception as e:
+        return f"Error adding column: {str(e)}"
+
+
+@tool
+@require_permission("write")
+def drop_db_column(
+    table_name: str,
+    column_name: str,
+    scope: Literal["context", "shared"] = "context",
+) -> str:
+    """Remove a column from an existing table. [DB]
+
+    USE THIS WHEN: You need to remove a column from a table schema.
+
+    Args:
+        table_name: Name of the table to alter.
+        column_name: Column name to remove.
+        scope: "context" (default) for group/thread-scoped storage,
+               "shared" for organization-wide shared storage (admin-only writes).
+
+    Returns:
+        Success message or error.
+    """
+    try:
+        validate_identifier(table_name)
+        validate_identifier(column_name)
+        db = _get_db_with_scope(scope)
+
+        if not db.table_exists(table_name):
+            return f"Error: Table '{table_name}' does not exist"
+
+        existing = {col["name"] for col in db.get_table_info(table_name)}
+        if column_name not in existing:
+            return f"Error: Column '{column_name}' does not exist in '{table_name}'"
+
+        db.execute(f"ALTER TABLE {table_name} DROP COLUMN {column_name}")
+        db.conn.commit()
+        return f"Dropped column '{column_name}' from '{table_name}'"
+    except Exception as e:
+        return f"Error dropping column: {str(e)}"
+
+
+@tool
+@require_permission("write")
 def delete_db_table(table_name: str, scope: Literal["context", "shared"] = "context") -> str:
     """Delete a table and all its data. [DB]
 
@@ -604,6 +684,8 @@ async def get_db_tools() -> list:
         list_db_tables,
         describe_db_table,
         delete_db_table,
+        add_db_column,
+        drop_db_column,
         export_db_table,
         import_db_table,
     ]
