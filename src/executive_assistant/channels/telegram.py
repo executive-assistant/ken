@@ -741,10 +741,13 @@ class TelegramChannel(BaseChannel):
 
             # Start typing indicator in background
             typing_task = asyncio.create_task(_keep_typing())
-            await self.application.bot.send_chat_action(
-                chat_id=batch[-1].conversation_id,
-                action="typing"
-            )
+            try:
+                await self.application.bot.send_chat_action(
+                    chat_id=batch[-1].conversation_id,
+                    action="typing"
+                )
+            except Exception as e:
+                logger.warning(f"{ctx} typing_action_failed error="{e}"")
 
             # Set up context
             from executive_assistant.storage.file_sandbox import set_thread_id
