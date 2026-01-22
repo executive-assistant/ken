@@ -43,6 +43,14 @@ from executive_assistant.tools.reminder_tools import (
     reminder_edit,
 )
 
+from executive_assistant.tools.flow_tools import (
+    create_flow,
+    list_flows,
+    run_flow,
+    cancel_flow,
+    delete_flow,
+)
+
 ALLOWED_MEMORY_TYPES = {"profile", "preference", "fact", "constraint", "style", "context"}
 COMMON_MEMORY_KEYS = {
     "timezone",
@@ -1380,5 +1388,66 @@ async def meta_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await update.message.reply_text(f"<pre>{text}</pre>", parse_mode="HTML")
     except Exception as e:
         await update.message.reply_text(f"Error reading meta: {e}")
+    finally:
+        _clear_context()
+
+
+# ==================== /flow COMMAND ====================
+
+async def flow_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /flow command for flow management.
+
+    Usage:
+        /flow list [status]
+        /flow run <id>
+        /flow cancel <id>
+        /flow delete <id>
+    """
+    if not update.message:
+        return
+
+    thread_id = _get_thread_id(update)
+    logger.info(f"CH=telegram CONV={update.effective_chat.id} USER={sanitize_thread_id_to_user_id(thread_id)} | command recv /flow {update.message.text or ''}")
+    if not await _ensure_authorized(update, thread_id):
+        return
+
+    chat_type = _get_chat_type(update)
+    args = context.args if context.args else []
+
+    if not args:
+        await update.message.reply_text(
+            "Usage: /flow list [status] | /flow run <id> | /flow cancel <id> | /flow delete <id>"
+        )
+        return
+
+    action = args[0].lower()
+    logger.info(f"CH=telegram CONV={update.effective_chat.id} USER={sanitize_thread_id_to_user_id(thread_id)} | command /flow action={action} args={args[1:]}")
+
+    await _set_context(thread_id, chat_type)
+    try:
+        if action == "list":
+            status = args[1].lower() if len(args) > 1 else None
+            result = await list_flows.ainvoke({"status": status})
+            await update.message.reply_text(result)
+        elif action == "run":
+            if len(args) < 2:
+                await update.message.reply_text("Usage: /flow run <id>")
+                return
+            result = await run_flow.ainvoke({"flow_id": int(args[1])})
+            await update.message.reply_text(result)
+        elif action == "cancel":
+            if len(args) < 2:
+                await update.message.reply_text("Usage: /flow cancel <id>")
+                return
+            result = await cancel_flow.ainvoke({"flow_id": int(args[1])})
+            await update.message.reply_text(result)
+        elif action == "delete":
+            if len(args) < 2:
+                await update.message.reply_text("Usage: /flow delete <id>")
+                return
+            result = await delete_flow.ainvoke({"flow_id": int(args[1])})
+            await update.message.reply_text(result)
+        else:
+            await update.message.reply_text("Unknown action. Use /flow list|run|cancel|delete")
     finally:
         _clear_context()

@@ -116,12 +116,12 @@ class TestDatabaseSchema:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_scheduled_jobs_table_exists(self, db_conn):
-        """Test that scheduled_jobs table exists."""
+    async def test_scheduled_flows_table_exists(self, db_conn):
+        """Test that scheduled_flows table exists."""
         result = await db_conn.fetchval("""
             SELECT EXISTS (
                 SELECT FROM information_schema.tables
-                WHERE table_name = 'scheduled_jobs'
+                WHERE table_name = 'scheduled_flows'
             )
         """)
         assert result is True
@@ -443,7 +443,7 @@ class TestWorkersAndJobs:
 
         # Create scheduled job
         await db_conn.execute(
-            """INSERT INTO scheduled_jobs
+            """INSERT INTO scheduled_flows
                (user_id, thread_id, worker_id, name, task, flow, due_time)
                VALUES ($1, $2, $3, $4, $5, $6, NOW() + INTERVAL '1 hour')""",
             user_id, thread_id, worker_id,
@@ -452,7 +452,7 @@ class TestWorkersAndJobs:
 
         # Verify job
         result = await db_conn.fetchrow(
-            "SELECT * FROM scheduled_jobs WHERE user_id = $1 AND thread_id = $2",
+            "SELECT * FROM scheduled_flows WHERE user_id = $1 AND thread_id = $2",
             user_id, thread_id
         )
         assert result is not None
@@ -473,7 +473,7 @@ class TestWorkersAndJobs:
         )
 
         job_result = await db_conn.fetchrow(
-            """INSERT INTO scheduled_jobs
+            """INSERT INTO scheduled_flows
                (user_id, thread_id, worker_id, name, task, flow, due_time)
                VALUES ($1, $2, $3, $4, $5, $6, NOW() + INTERVAL '1 hour')
                RETURNING id""",
@@ -484,7 +484,7 @@ class TestWorkersAndJobs:
 
         # Transition to running
         await db_conn.execute(
-            """UPDATE scheduled_jobs
+            """UPDATE scheduled_flows
                SET status = 'running', started_at = NOW()
                WHERE id = $1""",
             job_id
@@ -492,7 +492,7 @@ class TestWorkersAndJobs:
 
         # Transition to completed
         await db_conn.execute(
-            """UPDATE scheduled_jobs
+            """UPDATE scheduled_flows
                SET status = 'completed', completed_at = NOW(), result = 'Done'
                WHERE id = $1""",
             job_id
@@ -500,7 +500,7 @@ class TestWorkersAndJobs:
 
         # Verify final state
         result = await db_conn.fetchrow(
-            "SELECT * FROM scheduled_jobs WHERE id = $1",
+            "SELECT * FROM scheduled_flows WHERE id = $1",
             job_id
         )
         assert result["status"] == "completed"

@@ -1,6 +1,6 @@
-"""Tests for scheduled jobs storage and management.
+"""Tests for scheduled flows storage and management.
 
-Tests the ScheduledJobStorage class and ScheduledJob dataclass.
+Tests the ScheduledFlowStorage class and ScheduledFlow dataclass.
 """
 
 import uuid
@@ -8,23 +8,23 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from executive_assistant.storage.scheduled_jobs import (
-    ScheduledJob,
-    ScheduledJobStorage,
-    get_scheduled_job_storage,
+from executive_assistant.storage.scheduled_flows import (
+    ScheduledFlow,
+    ScheduledFlowStorage,
+    get_scheduled_flow_storage,
 )
 
 
 # =============================================================================
-# ScheduledJob Dataclass Tests
+# ScheduledFlow Dataclass Tests
 # =============================================================================
 
-class TestScheduledJob:
-    """Test ScheduledJob dataclass properties and methods."""
+class TestScheduledFlow:
+    """Test ScheduledFlow dataclass properties and methods."""
 
-    def test_job_properties(self):
-        """Test job status property methods."""
-        job = ScheduledJob(
+    def test_flow_properties(self):
+        """Test flow status property methods."""
+        flow = ScheduledFlow(
             id=1,
             user_id="test_user",
             thread_id="test_thread",
@@ -42,15 +42,15 @@ class TestScheduledJob:
             result=None,
         )
 
-        assert job.is_pending is True
-        assert job.is_running is False
-        assert job.is_completed is False
-        assert job.is_failed is False
-        assert job.is_recurring is False
+        assert flow.is_pending is True
+        assert flow.is_running is False
+        assert flow.is_completed is False
+        assert flow.is_failed is False
+        assert flow.is_recurring is False
 
-    def test_job_status_running(self):
+    def test_flow_status_running(self):
         """Test running status property."""
-        job = ScheduledJob(
+        flow = ScheduledFlow(
             id=1,
             user_id="test_user",
             thread_id="test_thread",
@@ -68,14 +68,14 @@ class TestScheduledJob:
             result=None,
         )
 
-        assert job.is_pending is False
-        assert job.is_running is True
-        assert job.is_completed is False
-        assert job.is_failed is False
+        assert flow.is_pending is False
+        assert flow.is_running is True
+        assert flow.is_completed is False
+        assert flow.is_failed is False
 
-    def test_job_status_completed(self):
+    def test_flow_status_completed(self):
         """Test completed status property."""
-        job = ScheduledJob(
+        flow = ScheduledFlow(
             id=1,
             user_id="test_user",
             thread_id="test_thread",
@@ -93,14 +93,14 @@ class TestScheduledJob:
             result="Success",
         )
 
-        assert job.is_pending is False
-        assert job.is_running is False
-        assert job.is_completed is True
-        assert job.is_failed is False
+        assert flow.is_pending is False
+        assert flow.is_running is False
+        assert flow.is_completed is True
+        assert flow.is_failed is False
 
-    def test_job_status_failed(self):
+    def test_flow_status_failed(self):
         """Test failed status property."""
-        job = ScheduledJob(
+        flow = ScheduledFlow(
             id=1,
             user_id="test_user",
             thread_id="test_thread",
@@ -118,14 +118,14 @@ class TestScheduledJob:
             result=None,
         )
 
-        assert job.is_pending is False
-        assert job.is_running is False
-        assert job.is_completed is False
-        assert job.is_failed is True
+        assert flow.is_pending is False
+        assert flow.is_running is False
+        assert flow.is_completed is False
+        assert flow.is_failed is True
 
-    def test_recurring_job(self):
-        """Test recurring job property."""
-        job = ScheduledJob(
+    def test_recurring_flow(self):
+        """Test recurring flow property."""
+        flow = ScheduledFlow(
             id=1,
             user_id="test_user",
             thread_id="test_thread",
@@ -143,12 +143,12 @@ class TestScheduledJob:
             result=None,
         )
 
-        assert job.is_recurring is True
-        assert job.cron == "0 9 * * *"
+        assert flow.is_recurring is True
+        assert flow.cron == "0 9 * * *"
 
-    def test_non_recurring_job(self):
-        """Test non-recurring job property."""
-        job = ScheduledJob(
+    def test_non_recurring_flow(self):
+        """Test non-recurring flow property."""
+        flow = ScheduledFlow(
             id=1,
             user_id="test_user",
             thread_id="test_thread",
@@ -166,11 +166,11 @@ class TestScheduledJob:
             result=None,
         )
 
-        assert job.is_recurring is False
+        assert flow.is_recurring is False
 
-    def test_non_recurring_job_with_empty_cron(self):
+    def test_non_recurring_flow_with_empty_cron(self):
         """Test that empty cron string is not considered recurring."""
-        job = ScheduledJob(
+        flow = ScheduledFlow(
             id=1,
             user_id="test_user",
             thread_id="test_thread",
@@ -188,20 +188,20 @@ class TestScheduledJob:
             result=None,
         )
 
-        assert job.is_recurring is False
+        assert flow.is_recurring is False
 
 
 # =============================================================================
-# ScheduledJobStorage Tests (with mocked DB)
+# ScheduledFlowStorage Tests (with mocked DB)
 # =============================================================================
 
-class TestScheduledJobStorageUnit:
-    """Unit tests for ScheduledJobStorage with mocked database."""
+class TestScheduledFlowStorageUnit:
+    """Unit tests for ScheduledFlowStorage with mocked database."""
 
     @pytest.fixture
     def storage(self):
-        """Create a ScheduledJobStorage instance."""
-        return ScheduledJobStorage()
+        """Create a ScheduledFlowStorage instance."""
+        return ScheduledFlowStorage()
 
     def test_storage_init(self, storage):
         """Test storage initialization."""
@@ -210,31 +210,31 @@ class TestScheduledJobStorageUnit:
     def test_storage_init_custom_conn_string(self):
         """Test storage initialization with custom connection string."""
         custom_conn = "postgresql://user:pass@localhost/db"
-        storage = ScheduledJobStorage(conn_string=custom_conn)
+        storage = ScheduledFlowStorage(conn_string=custom_conn)
         assert storage._conn_string == custom_conn
 
 
 # =============================================================================
-# ScheduledJobStorage Integration Tests
+# ScheduledFlowStorage Integration Tests
 # =============================================================================
 
 @pytest.mark.postgres
-class TestScheduledJobStorageIntegration:
+class TestScheduledFlowStorageIntegration:
     """Integration tests with real database."""
 
     @pytest.fixture
     def storage(self):
         """Create storage instance for testing."""
-        return ScheduledJobStorage()
+        return ScheduledFlowStorage()
 
     @pytest.mark.asyncio
-    async def test_create_job(self, storage, db_conn, clean_test_data):
-        """Test creating a new scheduled job."""
+    async def test_create_flow(self, storage, db_conn, clean_test_data):
+        """Test creating a new scheduled flow."""
         user_id = f"test_user_{uuid.uuid4().hex[:8]}"
         thread_id = f"test_thread_{uuid.uuid4().hex[:8]}"
         due_time = datetime.now() + timedelta(hours=1)
 
-        job = await storage.create(
+        flow = await storage.create(
             user_id=user_id,
             thread_id=thread_id,
             task="Check the weather",
@@ -243,19 +243,19 @@ class TestScheduledJobStorageIntegration:
             name="Weather Check",
         )
 
-        assert job.id is not None
-        assert job.user_id == user_id
-        assert job.thread_id == thread_id
-        assert job.task == "Check the weather"
-        assert job.flow == "fetch weather → report result"
-        assert job.name == "Weather Check"
-        assert job.status == "pending"
-        assert job.worker_id is None
-        assert job.cron is None
+        assert flow.id is not None
+        assert flow.user_id == user_id
+        assert flow.thread_id == thread_id
+        assert flow.task == "Check the weather"
+        assert flow.flow == "fetch weather → report result"
+        assert flow.name == "Weather Check"
+        assert flow.status == "pending"
+        assert flow.worker_id is None
+        assert flow.cron is None
 
     @pytest.mark.asyncio
-    async def test_create_job_with_worker(self, storage, db_conn, clean_test_data):
-        """Test creating a job with an associated worker."""
+    async def test_create_flow_with_worker(self, storage, db_conn, clean_test_data):
+        """Test creating a flow with an associated worker."""
         user_id = f"test_user_{uuid.uuid4().hex[:8]}"
         thread_id = f"test_thread_{uuid.uuid4().hex[:8]}"
         due_time = datetime.now() + timedelta(hours=1)
@@ -268,7 +268,7 @@ class TestScheduledJobStorageIntegration:
         )
         worker_id = worker_result["id"]
 
-        job = await storage.create(
+        flow = await storage.create(
             user_id=user_id,
             thread_id=thread_id,
             task="Execute task",
@@ -277,16 +277,16 @@ class TestScheduledJobStorageIntegration:
             worker_id=worker_id,
         )
 
-        assert job.worker_id == worker_id
+        assert flow.worker_id == worker_id
 
     @pytest.mark.asyncio
-    async def test_create_recurring_job(self, storage, db_conn, clean_test_data):
-        """Test creating a recurring job with cron expression."""
+    async def test_create_recurring_flow(self, storage, db_conn, clean_test_data):
+        """Test creating a recurring flow with cron expression."""
         user_id = f"test_user_{uuid.uuid4().hex[:8]}"
         thread_id = f"test_thread_{uuid.uuid4().hex[:8]}"
         due_time = datetime.now() + timedelta(hours=1)
 
-        job = await storage.create(
+        flow = await storage.create(
             user_id=user_id,
             thread_id=thread_id,
             task="Daily backup",
@@ -296,18 +296,18 @@ class TestScheduledJobStorageIntegration:
             cron="0 2 * * *",  # Daily at 2 AM
         )
 
-        assert job.is_recurring is True
-        assert job.cron == "0 2 * * *"
+        assert flow.is_recurring is True
+        assert flow.cron == "0 2 * * *"
 
     @pytest.mark.asyncio
     async def test_get_by_id(self, storage, db_conn, clean_test_data):
-        """Test retrieving a job by ID."""
+        """Test retrieving a flow by ID."""
         user_id = f"test_user_{uuid.uuid4().hex[:8]}"
         thread_id = f"test_thread_{uuid.uuid4().hex[:8]}"
         due_time = datetime.now() + timedelta(hours=1)
 
-        # Create a job
-        created_job = await storage.create(
+        # Create a flow
+        created_flow = await storage.create(
             user_id=user_id,
             thread_id=thread_id,
             task="Test task",
@@ -316,30 +316,30 @@ class TestScheduledJobStorageIntegration:
         )
 
         # Retrieve by ID
-        retrieved_job = await storage.get_by_id(created_job.id)
+        retrieved_flow = await storage.get_by_id(created_flow.id)
 
-        assert retrieved_job is not None
-        assert retrieved_job.id == created_job.id
-        assert retrieved_job.task == "Test task"
+        assert retrieved_flow is not None
+        assert retrieved_flow.id == created_flow.id
+        assert retrieved_flow.task == "Test task"
 
     @pytest.mark.asyncio
     async def test_get_by_id_not_found(self, storage):
-        """Test retrieving a non-existent job."""
-        job = await storage.get_by_id(99999)
-        assert job is None
+        """Test retrieving a non-existent flow."""
+        flow = await storage.get_by_id(99999)
+        assert flow is None
 
     @pytest.mark.asyncio
-    async def test_get_due_jobs(self, storage, db_conn, clean_test_data):
-        """Test retrieving jobs due before a given time."""
+    async def test_get_due_flows(self, storage, db_conn, clean_test_data):
+        """Test retrieving flows due before a given time."""
         user_id = f"test_user_{uuid.uuid4().hex[:8]}"
         thread_id = f"test_thread_{uuid.uuid4().hex[:8]}"
         now = datetime.now()
 
-        # Create multiple jobs at different times
+        # Create multiple flows at different times
         await storage.create(
             user_id=user_id,
             thread_id=thread_id,
-            task="Past job",
+            task="Past flow",
             flow="flow",
             due_time=now - timedelta(hours=1),  # Past
         )
@@ -347,7 +347,7 @@ class TestScheduledJobStorageIntegration:
         await storage.create(
             user_id=user_id,
             thread_id=thread_id,
-            task="Future job",
+            task="Future flow",
             flow="flow",
             due_time=now + timedelta(hours=1),  # Future
         )
@@ -355,27 +355,27 @@ class TestScheduledJobStorageIntegration:
         await storage.create(
             user_id=user_id,
             thread_id=thread_id,
-            task="Now job",
+            task="Now flow",
             flow="flow",
             due_time=now,  # Now
         )
 
-        # Get due jobs (should return past and now jobs)
-        due_jobs = await storage.get_due_jobs(now)
-        assert len(due_jobs) >= 2
+        # Get due flows (should return past and now flows)
+        due_flows = await storage.get_due_flows(now)
+        assert len(due_flows) >= 2
 
-        task_list = [job.task for job in due_jobs]
-        assert "Past job" in task_list
-        assert "Now job" in task_list
-        assert "Future job" not in task_list
+        task_list = [flow.task for flow in due_flows]
+        assert "Past flow" in task_list
+        assert "Now flow" in task_list
+        assert "Future flow" not in task_list
 
     @pytest.mark.asyncio
     async def test_list_by_user(self, storage, db_conn, clean_test_data):
-        """Test listing jobs for a specific user."""
+        """Test listing flows for a specific user."""
         user_id = f"test_user_{uuid.uuid4().hex[:8]}"
         thread_id = f"test_thread_{uuid.uuid4().hex[:8]}"
 
-        # Create multiple jobs for the same user
+        # Create multiple flows for the same user
         await storage.create(
             user_id=user_id,
             thread_id=thread_id,
@@ -392,30 +392,30 @@ class TestScheduledJobStorageIntegration:
             due_time=datetime.now() + timedelta(hours=2),
         )
 
-        # List jobs for user
-        jobs = await storage.list_by_user(user_id)
-        assert len(jobs) >= 2
+        # List flows for user
+        flows = await storage.list_by_user(user_id)
+        assert len(flows) >= 2
 
-        task_list = [job.task for job in jobs]
+        task_list = [flow.task for flow in flows]
         assert "Task 1" in task_list
         assert "Task 2" in task_list
 
     @pytest.mark.asyncio
     async def test_list_by_user_with_status_filter(self, storage, db_conn, clean_test_data):
-        """Test listing jobs for a user with status filter."""
+        """Test listing flows for a user with status filter."""
         user_id = f"test_user_{uuid.uuid4().hex[:8]}"
         thread_id = f"test_thread_{uuid.uuid4().hex[:8]}"
 
-        # Create jobs with different statuses
-        job1 = await storage.create(
+        # Create flows with different statuses
+        flow1 = await storage.create(
             user_id=user_id,
             thread_id=thread_id,
-            task="Pending job",
+            task="Pending flow",
             flow="flow",
             due_time=datetime.now() + timedelta(hours=1),
         )
 
-        job2 = await storage.create(
+        flow2 = await storage.create(
             user_id=user_id,
             thread_id=thread_id,
             task="Another pending",
@@ -424,28 +424,28 @@ class TestScheduledJobStorageIntegration:
         )
 
         # Mark one as completed
-        await storage.mark_started(job1.id)
-        await storage.mark_completed(job1.id, "Done")
+        await storage.mark_started(flow1.id)
+        await storage.mark_completed(flow1.id, "Done")
 
-        # List only pending jobs
-        pending_jobs = await storage.list_by_user(user_id, status="pending")
-        assert len(pending_jobs) >= 1
+        # List only pending flows
+        pending_flows = await storage.list_by_user(user_id, status="pending")
+        assert len(pending_flows) >= 1
 
-        task_list = [job.task for job in pending_jobs]
+        task_list = [flow.task for flow in pending_flows]
         assert "Another pending" in task_list
-        assert "Pending job" not in task_list
+        assert "Pending flow" not in task_list
 
     @pytest.mark.asyncio
     async def test_list_by_thread(self, storage, db_conn, clean_test_data):
-        """Test listing jobs for a specific thread."""
+        """Test listing flows for a specific thread."""
         user_id = f"test_user_{uuid.uuid4().hex[:8]}"
         thread_id = f"test_thread_{uuid.uuid4().hex[:8]}"
 
-        # Create jobs for the thread
+        # Create flows for the thread
         await storage.create(
             user_id=user_id,
             thread_id=thread_id,
-            task="Thread job 1",
+            task="Thread flow 1",
             flow="flow",
             due_time=datetime.now() + timedelta(hours=1),
         )
@@ -453,26 +453,26 @@ class TestScheduledJobStorageIntegration:
         await storage.create(
             user_id=user_id,
             thread_id=thread_id,
-            task="Thread job 2",
+            task="Thread flow 2",
             flow="flow",
             due_time=datetime.now() + timedelta(hours=1),
         )
 
-        # List jobs for thread
-        jobs = await storage.list_by_thread(thread_id)
-        assert len(jobs) >= 2
+        # List flows for thread
+        flows = await storage.list_by_thread(thread_id)
+        assert len(flows) >= 2
 
-        task_list = [job.task for job in jobs]
-        assert "Thread job 1" in task_list
-        assert "Thread job 2" in task_list
+        task_list = [flow.task for flow in flows]
+        assert "Thread flow 1" in task_list
+        assert "Thread flow 2" in task_list
 
     @pytest.mark.asyncio
     async def test_mark_started(self, storage, db_conn, clean_test_data):
-        """Test marking a job as started."""
+        """Test marking a flow as started."""
         user_id = f"test_user_{uuid.uuid4().hex[:8]}"
         thread_id = f"test_thread_{uuid.uuid4().hex[:8]}"
 
-        job = await storage.create(
+        flow = await storage.create(
             user_id=user_id,
             thread_id=thread_id,
             task="Test task",
@@ -481,28 +481,28 @@ class TestScheduledJobStorageIntegration:
         )
 
         # Mark as started
-        result = await storage.mark_started(job.id)
+        result = await storage.mark_started(flow.id)
 
         assert result is True
 
         # Verify status changed
-        updated_job = await storage.get_by_id(job.id)
-        assert updated_job.is_running is True
-        assert updated_job.started_at is not None
+        updated_flow = await storage.get_by_id(flow.id)
+        assert updated_flow.is_running is True
+        assert updated_flow.started_at is not None
 
     @pytest.mark.asyncio
     async def test_mark_started_not_found(self, storage):
-        """Test marking a non-existent job as started."""
+        """Test marking a non-existent flow as started."""
         result = await storage.mark_started(99999)
         assert result is False
 
     @pytest.mark.asyncio
     async def test_mark_completed(self, storage, db_conn, clean_test_data):
-        """Test marking a job as completed."""
+        """Test marking a flow as completed."""
         user_id = f"test_user_{uuid.uuid4().hex[:8]}"
         thread_id = f"test_thread_{uuid.uuid4().hex[:8]}"
 
-        job = await storage.create(
+        flow = await storage.create(
             user_id=user_id,
             thread_id=thread_id,
             task="Test task",
@@ -511,26 +511,26 @@ class TestScheduledJobStorageIntegration:
         )
 
         # First mark as started
-        await storage.mark_started(job.id)
+        await storage.mark_started(flow.id)
 
         # Then mark as completed
-        result = await storage.mark_completed(job.id, result="Job completed successfully")
+        result = await storage.mark_completed(flow.id, result="Job completed successfully")
 
         assert result is True
 
         # Verify status changed
-        updated_job = await storage.get_by_id(job.id)
-        assert updated_job.is_completed is True
-        assert updated_job.completed_at is not None
-        assert updated_job.result == "Job completed successfully"
+        updated_flow = await storage.get_by_id(flow.id)
+        assert updated_flow.is_completed is True
+        assert updated_flow.completed_at is not None
+        assert updated_flow.result == "Job completed successfully"
 
     @pytest.mark.asyncio
     async def test_mark_failed(self, storage, db_conn, clean_test_data):
-        """Test marking a job as failed."""
+        """Test marking a flow as failed."""
         user_id = f"test_user_{uuid.uuid4().hex[:8]}"
         thread_id = f"test_thread_{uuid.uuid4().hex[:8]}"
 
-        job = await storage.create(
+        flow = await storage.create(
             user_id=user_id,
             thread_id=thread_id,
             task="Test task",
@@ -539,24 +539,24 @@ class TestScheduledJobStorageIntegration:
         )
 
         # Mark as started then failed
-        await storage.mark_started(job.id)
-        result = await storage.mark_failed(job.id, error_message="Network timeout")
+        await storage.mark_started(flow.id)
+        result = await storage.mark_failed(flow.id, error_message="Network timeout")
 
         assert result is True
 
         # Verify status changed
-        updated_job = await storage.get_by_id(job.id)
-        assert updated_job.is_failed is True
-        assert updated_job.completed_at is not None
-        assert updated_job.error_message == "Network timeout"
+        updated_flow = await storage.get_by_id(flow.id)
+        assert updated_flow.is_failed is True
+        assert updated_flow.completed_at is not None
+        assert updated_flow.error_message == "Network timeout"
 
     @pytest.mark.asyncio
     async def test_cancel(self, storage, db_conn, clean_test_data):
-        """Test cancelling a pending job."""
+        """Test cancelling a pending flow."""
         user_id = f"test_user_{uuid.uuid4().hex[:8]}"
         thread_id = f"test_thread_{uuid.uuid4().hex[:8]}"
 
-        job = await storage.create(
+        flow = await storage.create(
             user_id=user_id,
             thread_id=thread_id,
             task="Test task",
@@ -564,22 +564,22 @@ class TestScheduledJobStorageIntegration:
             due_time=datetime.now() + timedelta(hours=1),
         )
 
-        # Cancel the job
-        result = await storage.cancel(job.id)
+        # Cancel the flow
+        result = await storage.cancel(flow.id)
 
         assert result is True
 
         # Verify status changed
-        updated_job = await storage.get_by_id(job.id)
-        assert updated_job.status == "cancelled"
+        updated_flow = await storage.get_by_id(flow.id)
+        assert updated_flow.status == "cancelled"
 
     @pytest.mark.asyncio
-    async def test_cancel_running_job_fails(self, storage, db_conn, clean_test_data):
-        """Test that cancelling a running job has no effect."""
+    async def test_cancel_running_flow_fails(self, storage, db_conn, clean_test_data):
+        """Test that cancelling a running flow has no effect."""
         user_id = f"test_user_{uuid.uuid4().hex[:8]}"
         thread_id = f"test_thread_{uuid.uuid4().hex[:8]}"
 
-        job = await storage.create(
+        flow = await storage.create(
             user_id=user_id,
             thread_id=thread_id,
             task="Test task",
@@ -588,26 +588,26 @@ class TestScheduledJobStorageIntegration:
         )
 
         # Mark as running
-        await storage.mark_started(job.id)
+        await storage.mark_started(flow.id)
 
         # Try to cancel (should fail)
-        result = await storage.cancel(job.id)
+        result = await storage.cancel(flow.id)
 
         assert result is False
 
-        # Verify job is still running
-        updated_job = await storage.get_by_id(job.id)
-        assert updated_job.is_running is True
+        # Verify flow is still running
+        updated_flow = await storage.get_by_id(flow.id)
+        assert updated_flow.is_running is True
 
     @pytest.mark.asyncio
     async def test_create_next_instance(self, storage, db_conn, clean_test_data):
-        """Test creating the next instance of a recurring job."""
+        """Test creating the next instance of a recurring flow."""
         user_id = f"test_user_{uuid.uuid4().hex[:8]}"
         thread_id = f"test_thread_{uuid.uuid4().hex[:8]}"
         now = datetime.now()
 
-        # Create a recurring job
-        parent_job = await storage.create(
+        # Create a recurring flow
+        parent_flow = await storage.create(
             user_id=user_id,
             thread_id=thread_id,
             task="Daily check",
@@ -617,29 +617,29 @@ class TestScheduledJobStorageIntegration:
             name="Daily Check",
         )
 
-        # Complete the parent job
-        await storage.mark_started(parent_job.id)
-        await storage.mark_completed(parent_job.id, result="Success")
+        # Complete the parent flow
+        await storage.mark_started(parent_flow.id)
+        await storage.mark_completed(parent_flow.id, result="Success")
 
         # Create next instance
         next_due = now + timedelta(days=1)
-        next_job = await storage.create_next_instance(parent_job, next_due)
+        next_flow = await storage.create_next_instance(parent_flow, next_due)
 
-        assert next_job is not None
-        assert next_job.task == parent_job.task
-        assert next_job.cron == parent_job.cron
-        assert next_job.name == parent_job.name
-        assert next_job.status == "pending"
+        assert next_flow is not None
+        assert next_flow.task == parent_flow.task
+        assert next_flow.cron == parent_flow.cron
+        assert next_flow.name == parent_flow.name
+        assert next_flow.status == "pending"
 
     @pytest.mark.asyncio
     async def test_create_next_instance_non_recurring(self, storage, db_conn, clean_test_data):
-        """Test that next instance is None for non-recurring jobs."""
+        """Test that next instance is None for non-recurring flows."""
         user_id = f"test_user_{uuid.uuid4().hex[:8]}"
         thread_id = f"test_thread_{uuid.uuid4().hex[:8]}"
         now = datetime.now()
 
-        # Create a non-recurring job
-        parent_job = await storage.create(
+        # Create a non-recurring flow
+        parent_flow = await storage.create(
             user_id=user_id,
             thread_id=thread_id,
             task="One-time task",
@@ -649,19 +649,19 @@ class TestScheduledJobStorageIntegration:
         )
 
         # Try to create next instance
-        next_job = await storage.create_next_instance(parent_job, now + timedelta(days=1))
+        next_flow = await storage.create_next_instance(parent_flow, now + timedelta(days=1))
 
-        assert next_job is None
+        assert next_flow is None
 
     @pytest.mark.asyncio
-    async def test_job_lifecycle(self, storage, db_conn, clean_test_data):
-        """Test complete job lifecycle: create -> start -> complete -> next."""
+    async def test_flow_lifecycle(self, storage, db_conn, clean_test_data):
+        """Test complete flow lifecycle: create -> start -> complete -> next."""
         user_id = f"test_user_{uuid.uuid4().hex[:8]}"
         thread_id = f"test_thread_{uuid.uuid4().hex[:8]}"
         now = datetime.now()
 
-        # Create recurring job
-        job = await storage.create(
+        # Create recurring flow
+        flow = await storage.create(
             user_id=user_id,
             thread_id=thread_id,
             task="Recurring task",
@@ -671,24 +671,24 @@ class TestScheduledJobStorageIntegration:
             name="Hourly Task",
         )
 
-        assert job.is_pending is True
+        assert flow.is_pending is True
 
         # Mark as started
-        await storage.mark_started(job.id)
-        started_job = await storage.get_by_id(job.id)
-        assert started_job.is_running is True
+        await storage.mark_started(flow.id)
+        started_flow = await storage.get_by_id(flow.id)
+        assert started_flow.is_running is True
 
         # Mark as completed with result
-        await storage.mark_completed(job.id, result="Task completed")
-        completed_job = await storage.get_by_id(job.id)
-        assert completed_job.is_completed is True
-        assert completed_job.result == "Task completed"
+        await storage.mark_completed(flow.id, result="Task completed")
+        completed_flow = await storage.get_by_id(flow.id)
+        assert completed_flow.is_completed is True
+        assert completed_flow.result == "Task completed"
 
         # Create next instance
         next_due = now + timedelta(hours=1)
-        next_job = await storage.create_next_instance(completed_job, next_due)
-        assert next_job is not None
-        assert next_job.id != job.id  # Different job
+        next_flow = await storage.create_next_instance(completed_flow, next_due)
+        assert next_flow is not None
+        assert next_flow.id != flow.id  # Different flow
 
 
 # =============================================================================
@@ -696,11 +696,11 @@ class TestScheduledJobStorageIntegration:
 # =============================================================================
 
 class TestGlobalStorage:
-    """Test global scheduled job storage instance."""
+    """Test global scheduled flow storage instance."""
 
     @pytest.mark.asyncio
-    async def test_get_scheduled_job_storage_singleton(self):
-        """Test that get_scheduled_job_storage returns same instance."""
-        storage1 = await get_scheduled_job_storage()
-        storage2 = await get_scheduled_job_storage()
+    async def test_get_scheduled_flow_storage_singleton(self):
+        """Test that get_scheduled_flow_storage returns same instance."""
+        storage1 = await get_scheduled_flow_storage()
+        storage2 = await get_scheduled_flow_storage()
         assert storage1 is storage2

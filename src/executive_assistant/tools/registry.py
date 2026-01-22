@@ -212,6 +212,27 @@ def get_standard_tools() -> list[BaseTool]:
     return tools
 
 
+async def get_flow_tools() -> list[BaseTool]:
+    """Get flow scheduling/execution tools."""
+    from executive_assistant.tools.flow_tools import (
+        create_flow,
+        list_flows,
+        run_flow,
+        cancel_flow,
+        delete_flow,
+    )
+    return [create_flow, list_flows, run_flow, cancel_flow, delete_flow]
+
+
+async def get_tools_by_name(names: list[str]) -> list[BaseTool]:
+    """Resolve tools by name from the registry."""
+    all_tools = await get_all_tools()
+    tool_map = {tool.name: tool for tool in all_tools}
+    missing = [name for name in names if name not in tool_map]
+    if missing:
+        raise ValueError(f"Unknown tool(s): {', '.join(missing)}")
+    return [tool_map[name] for name in names]
+
 async def get_all_tools() -> list[BaseTool]:
     """
     Get all available tools for the agent.
@@ -258,6 +279,9 @@ async def get_all_tools() -> list[BaseTool]:
 
     # Add reminder tools
     all_tools.extend(await get_reminder_tools())
+
+    # Add flow tools
+    all_tools.extend(await get_flow_tools())
 
     # Add meta tools
     all_tools.extend(await get_meta_tools())

@@ -673,7 +673,7 @@ Complete database schema in a single file (formerly 7 separate migrations):
 - `workspace_members` - role-based access (admin/editor/reader)
 - `workspace_acl` - resource-level sharing (read|write only; admin via members)
 - `conversations`, `messages` - chat metadata and audit log
-- `workers`, `scheduled_jobs` - orchestrator-spawned workers
+- `workers`, `scheduled_flows` - orchestrator-spawned workers
 - `reminders` - scheduled reminders with recurrence
 - `file_paths`, `db_paths`, `user_registry` - ownership tracking
 - All foreign keys, indexes, and constraints
@@ -816,7 +816,7 @@ All migration scripts have been consolidated into a single `migrations/001_initi
 - Old migration files removed:
   - `002_reminders.sql`
   - `003_workers.sql`
-  - `004_scheduled_jobs.sql`
+  - `004_scheduled_flows.sql`
   - `005_structured_summary.sql`
   - `006_drop_legacy_summary.sql`
   - `007_workspaces.sql` → merged into `001_initial_schema.sql`
@@ -828,7 +828,7 @@ All migration scripts have been consolidated into a single `migrations/001_initi
 - Workspaces: `workspaces`, `user_workspaces`, `group_workspaces`, `thread_workspaces`
 - Access control: `workspace_members`, `workspace_acl`
 - Conversations: `conversations`, `messages`
-- Workers & jobs: `workers`, `scheduled_jobs`
+- Workers & jobs: `workers`, `scheduled_flows`
 - Ownership tracking: `file_paths`, `db_paths`, `user_registry`
 - Reminders: `reminders`
 

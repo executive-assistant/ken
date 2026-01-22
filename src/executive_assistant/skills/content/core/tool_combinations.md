@@ -14,6 +14,17 @@ This skill teaches **how to combine tools effectively**. Individual tools are po
 
 ## Common Workflow Patterns
 
+
+## Flow Automation (Executor Chains)
+
+Use flows to run multi-step executor chains now or on a schedule.
+
+**Tools:** `create_flow`, `list_flows`, `run_flow`, `cancel_flow`, `delete_flow`
+
+**When to use:** repetitive multi-step automations or scheduled pipelines.
+
+**Guardrail:** Flow agents may not call flow management tools (create/list/run/cancel/delete).
+
 ### Pattern 1: Query → Export → Save
 
 **When:** You need to query data and create a report

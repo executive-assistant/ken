@@ -549,6 +549,49 @@ def delete_vs_documents(
 
 
 @tool
+def update_vs_document(
+    collection_name: str,
+    document_id: str,
+    content: str,
+    scope: Literal["context", "shared"] = "context",
+) -> str:
+    """
+    Update a document in a VS collection by document_id.
+
+    USE THIS WHEN:
+    - User wants to replace/update a document already stored in VS
+    - You have the document_id (shown in search results metadata)
+
+    Args:
+        collection_name: Collection name.
+        document_id: Document identifier to replace.
+        content: New document content.
+        scope: "context" (default) or "shared".
+
+    Returns:
+        Confirmation message with chunk count.
+    """
+    try:
+        validate_identifier(collection_name)
+        if not document_id or not document_id.strip():
+            return "Error: document_id is required"
+        if not content or not content.strip():
+            return "Error: content is required"
+
+        storage_id = _get_storage_id_with_scope(scope)
+        collection = get_lancedb_collection(storage_id, collection_name)
+        added = collection.update_document(document_id=document_id, content=content)
+
+        # Only record metadata for context-scoped VS
+        if scope == "context":
+            _record_vs_collection_added(collection_name)
+
+        return f"Updated document '{document_id}' in VS collection '{collection_name}' ({added} chunks)"
+    except Exception as exc:
+        return f"Error updating VS document: {exc}"
+
+
+@tool
 def add_file_to_vs(
     collection_name: str,
     file_path: str,
@@ -631,6 +674,7 @@ async def get_vs_tools() -> list:
         describe_vs_collection,
         drop_vs_collection,
         add_vs_documents,
+        update_vs_document,
         delete_vs_documents,
         add_file_to_vs,
     ]

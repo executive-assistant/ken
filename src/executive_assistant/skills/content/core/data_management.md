@@ -38,7 +38,9 @@ This skill teaches you how to choose between Database (DB), Vector Store (VS), a
 ```
 1. create_db_table - Define schema (or infer from data)
 2. insert_db_table - Add data
-3. query_db - Retrieve with SQL queries
+3. add_db_column - Extend schema when new fields appear
+4. drop_db_column - Remove unused columns
+5. query_db - Retrieve with SQL queries
 ```
 
 **Example Workflow:**
@@ -365,6 +367,7 @@ write_file("monthly_timesheet_report.md", report)
 | Generate report | DB → Files | `query_db` + `write_file` |
 | Find similar docs | VS | `search_vs` |
 | Save conversation | VS | `create_vs_collection` |
+| Update VS document | VS | `update_vs_document` |
 | Export data | DB → Files | `export_db_table` |
 | Aggregate metrics | DB | `query_db` with SQL |
 | Semantic search | VS | `search_vs` |

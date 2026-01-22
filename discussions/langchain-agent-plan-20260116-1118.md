@@ -14,7 +14,7 @@ Adopt the **native LangChain agent** (and its middleware features) as the primar
 3) Keep the current graph as a fallback (`AGENT_RUNTIME=custom`).
 4) Make middleware features configurable via environment flags (summary, call limits, retries).
 5) Ensure the runtime returns the same event shape expected by `stream_agent_response`.
-6) Archive Orchestrator/Worker agents (disable tools and scheduled job execution).
+6) Archive Orchestrator/Worker agents (disable tools and scheduled flow execution).
 
 ---
 
@@ -37,7 +37,7 @@ Completed work mapped to this plan:
   - Tool contract suite: `tests/test_tool_contracts.py`.
   - Cassette recording helper: `scripts/pytest_record_cassettes.sh`.
 - **Orchestrator/Worker archived**:
-  - Tools disabled and removed from registry; scheduled jobs now mark due entries failed (archived).
+  - Tools disabled and removed from registry; scheduled flows now mark due entries failed (archived).
   - Cron parsing moved to shared utility (`src/executive_assistant/utils/cron.py`) for reminders.
   - Orchestrator/worker tests skipped; doc annotated as archived.
 
@@ -50,7 +50,7 @@ Test results (local):
 Known gaps:
 - Live integration tests are gated (`RUN_LIVE_LLM_TESTS=1` + provider API key); no cassette has been recorded yet.
 - Summarization parity between custom structured summary and LangChain middleware is not validated in tests.
-- Orchestrator/Worker agents are archived; scheduled jobs are disabled until re-enabled.
+- Orchestrator/Worker agents are archived; scheduled flows are disabled until re-enabled.
 
 Next steps:
 - Record the first VCR cassette via `./scripts/pytest_record_cassettes.sh` to lock a baseline trajectory.
