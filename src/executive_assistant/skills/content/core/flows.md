@@ -61,6 +61,7 @@ Each agent in a flow must include all required fields:
 - If create_flow fails with missing fields, supply all required AgentSpec fields listed above.
 
 ## Notes
+- schedule_type aliases: `once` → `scheduled`, `cron` → `recurring`.
 - If flow creation fails with missing AgentSpec fields, add the missing fields above.
 - Flow agents cannot call flow tools (no nesting).
 
@@ -178,5 +179,34 @@ Each agent in a flow must include all required fields:
     }
   ],
   "run_mode": "normal"
+}
+```
+
+
+## Troubleshooting
+- If the assistant says an agent must be registered first, that is incorrect for this system. Agents are defined inline in `create_flow`.
+- If you see “Field required” errors, it means one or more AgentSpec fields are missing. Provide all of:
+  `agent_id`, `description`, `model`, `tools`, `system_prompt`.
+- There is no create_agent tool.
+
+
+### AgentSpec is part of create_flow
+When calling `create_flow`, you MUST include `agents` inline. There is no separate agent registry step. The AgentSpec fields belong inside the `create_flow` payload.
+
+Example snippet:
+```json
+{
+  "name": "my_flow",
+  "description": "Demo",
+  "schedule_type": "immediate",
+  "agents": [
+    {
+      "agent_id": "demo_agent",
+      "description": "Do the task",
+      "model": "gpt-oss:20b",
+      "tools": ["execute_python"],
+      "system_prompt": "Run the task and return the output."
+    }
+  ]
 }
 ```
