@@ -63,3 +63,38 @@ async def test_agent_tools_rejects_too_many_tools(monkeypatch, tmp_path):
     tools = [f"tool_{i}" for i in range(11)]
     result = await agent_tools.create_agent.ainvoke({"agent_id":"too_many","name":"TooMany","description":"test","tools":tools,"system_prompt":"x"})
     assert "Error" in result
+
+
+@pytest.mark.asyncio
+async def test_run_agent_tool(monkeypatch, tmp_path):
+    from executive_assistant.storage import agent_registry as registry_mod
+
+    monkeypatch.setattr(registry_mod.settings, "USERS_ROOT", tmp_path)
+
+    def _fake_thread_id():
+        return "telegram:123"
+
+    monkeypatch.setattr(agent_tools, "get_thread_id", _fake_thread_id)
+
+    # create agent
+    await agent_tools.create_agent.ainvoke({
+        "agent_id": "a1",
+        "name": "Agent One",
+        "description": "test",
+        "tools": ["execute_python"],
+        "system_prompt": "Use $flow_input then $previous_output",
+        "output_schema": {},
+    })
+
+    async def _fake_run_agent(*args, **kwargs):
+        return {"raw": "ok"}
+
+    from executive_assistant.flows import runner
+    monkeypatch.setattr(runner, "_run_agent", _fake_run_agent)
+
+    result = await agent_tools.run_agent.ainvoke({
+        "agent_id": "a1",
+        "flow_input": {"url": "https://example.com"},
+        "previous_output": {"x": 1},
+    })
+    assert "ok" in result

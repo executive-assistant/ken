@@ -118,3 +118,67 @@ async def delete_agent(agent_id: str) -> str:
     user_id = _get_user_id()
     registry = get_agent_registry(user_id)
     return registry.delete_agent(agent_id)
+
+
+@tool
+async def run_agent(
+    agent_id: str,
+    flow_input: dict | str | None = None,
+    previous_output: dict | str | None = None,
+    run_mode: str = "normal",
+) -> str:
+    """Run a mini-agent once for testing. Provide flow_input/previous_output as dict or JSON string."""
+    import json as _json
+    from executive_assistant.flows.spec import AgentSpec, FlowMiddlewareConfig
+    from executive_assistant.flows import runner
+
+    user_id = _get_user_id()
+    registry = get_agent_registry(user_id)
+    record = registry.get_agent(agent_id)
+    if not record:
+        return f"Agent '{agent_id}' not found."
+
+    def _parse_dict(value):
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = _json.loads(value)
+                if isinstance(parsed, dict):
+                    return parsed
+            except _json.JSONDecodeError:
+                return None
+        return None
+
+    flow_input_dict = _parse_dict(flow_input)
+    prev_output_dict = _parse_dict(previous_output)
+
+    if flow_input is not None and flow_input_dict is None:
+        return "Error: flow_input must be a dict or JSON object string."
+    if previous_output is not None and prev_output_dict is None:
+        return "Error: previous_output must be a dict or JSON object string."
+
+    if flow_input_dict is not None and "$flow_input" not in record.system_prompt:
+        return "Error: agent prompt must include $flow_input when flow_input is provided."
+    if prev_output_dict is not None and "$previous_output" not in record.system_prompt:
+        return "Error: agent prompt must include $previous_output when previous_output is provided."
+
+    agent_spec = AgentSpec(
+        agent_id=record.agent_id,
+        name=record.name,
+        description=record.description,
+        tools=record.tools,
+        system_prompt=record.system_prompt,
+        output_schema=record.output_schema or {},
+    )
+
+    output = await runner._run_agent(
+        agent_spec,
+        previous_output=prev_output_dict,
+        flow_input=flow_input_dict,
+        run_mode=run_mode,
+        middleware_config=FlowMiddlewareConfig(),
+    )
+    return _json.dumps(output, indent=2, ensure_ascii=False)

@@ -33,7 +33,7 @@ async def create_flow(
     notify_on_failure: bool = True,
     notification_channels: list[str] | None = None,
     run_mode: str = "normal",
-    input_payload: dict[str, Any] | None = None,
+    flow_input: dict[str, Any] | None = None,
     middleware: dict[str, Any] | None = None,
 ) -> str:
     """Create a flow (executor chain) for immediate, scheduled, or recurring execution.
@@ -89,14 +89,14 @@ async def create_flow(
         if agent and len(agent.tools) > 5:
             warnings.append(f"{agent_id} uses {len(agent.tools)} tools (recommended <=5)")
 
-    # Validate first agent uses $flow_input when input_payload is provided
+    # Validate first agent uses $flow_input when flow_input is provided
     first_agent = registry.get_agent(agent_ids[0]) if agent_ids else None
-    if input_payload is not None and first_agent and "$flow_input" not in first_agent.system_prompt:
-        return "Error: first agent system_prompt must include $flow_input when input_payload is provided."
+    if flow_input is not None and first_agent and "$flow_input" not in first_agent.system_prompt:
+        return "Error: first agent system_prompt must include $flow_input when flow_input is provided."
 
-    # Require input_payload for the first agent to avoid empty context
-    if input_payload is None:
-        return "Error: input_payload is required for flows to provide context to the first agent."
+    # Require flow_input for the first agent to avoid empty context
+    if flow_input is None:
+        return "Error: flow_input is required for flows to provide context to the first agent."
 
     # Guard: cron "* * * * *" is often used to mean "run now" and can create duplicate flows.
     if schedule_type == "recurring" and cron_expression and cron_expression.strip() == "* * * * *":
@@ -151,7 +151,7 @@ async def create_flow(
         notification_channels=notification_channels or [thread_id.split(":")[0]],
         run_mode=run_mode,
         middleware=middleware_config,
-        input_payload=input_payload,
+        flow_input=flow_input,
     )
 
     storage = await get_scheduled_flow_storage()

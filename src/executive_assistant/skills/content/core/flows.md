@@ -13,14 +13,14 @@ Use flows when you want the assistant to execute a structured sequence of steps 
 Use `create_agent` to register mini agents per user. Flows reference them by `agent_ids`.
 
 ## Input payloads
-Flows can pass an `input_payload` (a JSON object) into the **first agent**. If the first agent’s prompt
+Flows can pass an `flow_input` (a JSON object) into the **first agent**. If the first agent’s prompt
 includes `$flow_input`, it will be replaced with the JSON payload. Subsequent agents only receive
 `$previous_output` from the immediately prior agent.
 
 Note:
 - If `schedule_type` is `immediate` or `scheduled`, omit `cron_expression`.
 - Use `schedule_type: "cron"` (alias for `recurring`) **with** `cron_expression` for recurring flows.
-- `input_payload` is **required** whenever the first agent needs external inputs (URLs, IDs, parameters).
+- `flow_input` is **required** whenever the first agent needs external inputs (URLs, IDs, parameters).
 
 Example: input payload + prompt usage
 ```json
@@ -73,7 +73,7 @@ Each agent must include all required fields:
 
 Constraints:
 - Mini agents should use **≤5 tools**, hard cap **10 tools**.
-- Use `$flow_input` in the first agent prompt to consume `input_payload`.
+- Use `$flow_input` in the first agent prompt to consume `flow_input`.
 - Use `$previous_output` to consume the prior agent’s output.
 - If you need structured outputs, define `output_schema` in the agent and the flow runner will enforce JSON output.
 
@@ -84,7 +84,7 @@ Constraints:
   "description": "Test flow",
   "schedule_type": "immediate",
   "agent_ids": ["runner_1"],
-  "input_payload": {"url": "https://example.com"},
+  "flow_input": {"url": "https://example.com"},
   "run_mode": "normal"
 }
 ```

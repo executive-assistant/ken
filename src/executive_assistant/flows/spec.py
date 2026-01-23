@@ -46,4 +46,4 @@ class FlowSpec(BaseModel):
     notification_channels: list[str] = Field(default_factory=lambda: ["telegram"])
     run_mode: Literal["normal", "emulated"] = "normal"
     middleware: FlowMiddlewareConfig = Field(default_factory=FlowMiddlewareConfig)
-    input_payload: dict[str, Any] | None = None
+    flow_input: dict[str, Any] | None = None

@@ -102,13 +102,13 @@ def _build_flow_middleware(config: FlowMiddlewareConfig, run_mode: str) -> list[
 def _build_prompt(
     system_prompt: str,
     previous_output: dict[str, Any] | None,
-    input_payload: dict[str, Any] | None,
+    flow_input: dict[str, Any] | None,
 ) -> str:
     prompt = system_prompt
-    if input_payload is not None:
+    if flow_input is not None:
         prompt = prompt.replace(
             "$flow_input",
-            json.dumps(input_payload, indent=2, ensure_ascii=False),
+            json.dumps(flow_input, indent=2, ensure_ascii=False),
         )
     if previous_output is not None:
         prompt = prompt.replace(
@@ -184,14 +184,14 @@ def _extract_result_content(result: Any) -> str:
 async def _run_agent(
     agent_spec: AgentSpec,
     previous_output: dict[str, Any] | None,
-    input_payload: dict[str, Any] | None,
+    flow_input: dict[str, Any] | None,
     run_mode: str,
     middleware_config: FlowMiddlewareConfig,
     flow_run_id: str | None = None,
     agent_index: int | None = None,
 ) -> dict:
     tool_list = ",".join(agent_spec.tools)
-    flow_input_size = len(json.dumps(input_payload, ensure_ascii=False)) if input_payload is not None else 0
+    flow_input_size = len(json.dumps(flow_input, ensure_ascii=False)) if flow_input is not None else 0
     prev_output_size = len(json.dumps(previous_output, ensure_ascii=False)) if previous_output is not None else 0
 
     effective_model = "fast"
@@ -205,7 +205,7 @@ async def _run_agent(
         tool_list,
         len(agent_spec.tools),
         run_mode,
-        bool(input_payload),
+        bool(flow_input),
         bool(previous_output),
         flow_input_size,
         prev_output_size,
@@ -213,7 +213,7 @@ async def _run_agent(
     model = create_model(model=effective_model)
     tools = await get_tools_by_name([name for name in agent_spec.tools if name not in FLOW_TOOL_NAMES])
 
-    prompt = _build_prompt(agent_spec.system_prompt, previous_output, input_payload)
+    prompt = _build_prompt(agent_spec.system_prompt, previous_output, flow_input)
 
     if tools:
         try:
@@ -317,7 +317,7 @@ async def execute_flow(flow: ScheduledFlow) -> dict:
         previous_output: dict[str, Any] | None = None
 
         for idx, agent_spec in enumerate(agents):
-            payload = flow_spec.input_payload if idx == 0 else None
+            payload = flow_spec.flow_input if idx == 0 else None
             output = await _run_agent(
                 agent_spec,
                 previous_output,
