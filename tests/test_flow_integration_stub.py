@@ -13,8 +13,8 @@ from executive_assistant.flows import runner
 async def test_execute_flow_persists_results(monkeypatch):
     calls = []
 
-    async def _fake_run_agent(agent_spec, previous_output, input_payload, run_mode, middleware_config, **kwargs):
-        calls.append((agent_spec.agent_id, input_payload, previous_output))
+    async def _fake_run_agent(agent_spec, previous_output, flow_input, run_mode, middleware_config, **kwargs):
+        calls.append((agent_spec.agent_id, flow_input, previous_output))
         return {"raw": f"out-{agent_spec.agent_id}"}
 
     class _Store:
@@ -74,7 +74,7 @@ async def test_execute_flow_persists_results(monkeypatch):
         schedule_type="immediate",
         notify_on_complete=False,
         notify_on_failure=False,
-        input_payload={"hello": "world"},
+        flow_input={"hello": "world"},
     )
 
     flow = runner.ScheduledFlow(
@@ -110,7 +110,7 @@ async def test_execute_flow_persists_results(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_execute_flow_creates_next_instance(monkeypatch):
-    async def _fake_run_agent(agent_spec, previous_output, input_payload, run_mode, middleware_config, **kwargs):
+    async def _fake_run_agent(agent_spec, previous_output, flow_input, run_mode, middleware_config, **kwargs):
         return {"raw": "ok"}
 
     class _Store:
@@ -160,7 +160,7 @@ async def test_execute_flow_creates_next_instance(monkeypatch):
         cron_expression="0 9 * * *",
         notify_on_complete=False,
         notify_on_failure=False,
-        input_payload={"hello": "world"},
+        flow_input={"hello": "world"},
     )
 
     flow = runner.ScheduledFlow(

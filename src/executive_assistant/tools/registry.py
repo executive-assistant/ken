@@ -313,7 +313,7 @@ async def get_all_tools() -> list[BaseTool]:
         update_agent,
         delete_agent,
     )
-    all_tools.extend([create_agent, list_agents, get_agent, update_agent, delete_agent])
+    all_tools.extend([create_agent, list_agents, get_agent, update_agent, delete_agent, run_agent])
 
     # Flow project workspace tools
     from executive_assistant.tools.flow_project_tools import create_flow_project_workspace

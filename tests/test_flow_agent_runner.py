@@ -13,6 +13,9 @@ from executive_assistant.flows.spec import AgentSpec, FlowMiddlewareConfig
 
 
 class _DummyModel:
+    def bind_tools(self, tools, tool_choice=None):
+        return self
+
     def with_structured_output(self, schema):
         return self
 
@@ -61,7 +64,7 @@ async def test_run_agent_injects_payload_and_previous_output(monkeypatch):
     output = await runner._run_agent(
         agent,
         previous_output={"key": "value"},
-        input_payload={"url": "https://example.com"},
+        flow_input={"url": "https://example.com"},
         run_mode="normal",
         middleware_config=FlowMiddlewareConfig(),
     )
@@ -96,7 +99,7 @@ async def test_run_agent_structured_output(monkeypatch):
     output = await runner._run_agent(
         agent,
         previous_output=None,
-        input_payload=None,
+        flow_input=None,
         run_mode="normal",
         middleware_config=FlowMiddlewareConfig(),
     )
@@ -173,7 +176,7 @@ async def test_run_agent_prefers_tool_message_output(monkeypatch):
     output = await runner._run_agent(
         agent,
         previous_output=None,
-        input_payload=None,
+        flow_input=None,
         run_mode="normal",
         middleware_config=FlowMiddlewareConfig(),
     )
@@ -206,17 +209,17 @@ async def test_run_agent_structured_output_invalid(monkeypatch):
         await runner._run_agent(
             agent,
             previous_output=None,
-            input_payload=None,
+            flow_input=None,
             run_mode="normal",
             middleware_config=FlowMiddlewareConfig(),
         )
 
 @pytest.mark.asyncio
-async def test_execute_flow_passes_input_payload_once(monkeypatch):
+async def test_execute_flow_passes_flow_input_once(monkeypatch):
     calls = []
 
-    async def _fake_run_agent(agent_spec, previous_output, input_payload, run_mode, middleware_config, **kwargs):
-        calls.append((agent_spec.agent_id, input_payload, previous_output))
+    async def _fake_run_agent(agent_spec, previous_output, flow_input, run_mode, middleware_config, **kwargs):
+        calls.append((agent_spec.agent_id, flow_input, previous_output))
         return {"raw": agent_spec.agent_id}
 
     async def _fake_storage():
@@ -234,7 +237,7 @@ async def test_execute_flow_passes_input_payload_once(monkeypatch):
         owner="anon",
         agent_ids=["a1", "a2"],
         schedule_type="immediate",
-        input_payload={"hello": "world"},
+        flow_input={"hello": "world"},
     )
 
     flow = runner.ScheduledFlow(

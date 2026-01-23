@@ -62,7 +62,7 @@ async def test_flow_tools_create_list_delete(monkeypatch, tmp_path):
     monkeypatch.setattr(flow_tools, "get_scheduled_flow_storage", _fake_storage)
 
     # Create flow (immediate)
-    res = await flow_tools.create_flow.ainvoke({"name":"flow","description":"flow","agent_ids":["a1"],"schedule_type":"immediate","input_payload":{"url":"https://example.com"}})
+    res = await flow_tools.create_flow.ainvoke({"name":"flow","description":"flow","agent_ids":["a1"],"schedule_type":"immediate","flow_input":{"url":"https://example.com"}})
     assert "Flow created" in res
 
     listing = await flow_tools.list_flows.ainvoke({})
@@ -76,7 +76,7 @@ async def test_flow_tools_create_list_delete(monkeypatch, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_flow_tools_input_payload_required(monkeypatch, tmp_path):
+async def test_flow_tools_flow_input_required(monkeypatch, tmp_path):
     from executive_assistant.storage import agent_registry as registry_mod
 
     monkeypatch.setattr(registry_mod.settings, "USERS_ROOT", tmp_path)
@@ -95,8 +95,8 @@ async def test_flow_tools_input_payload_required(monkeypatch, tmp_path):
         system_prompt="use $flow_input.url",
     )
 
-    res = await flow_tools.create_flow.ainvoke({"name":"flow","description":"flow","agent_ids":["a1"],"schedule_type":"immediate","input_payload":None})
-    assert "input_payload" in res
+    res = await flow_tools.create_flow.ainvoke({"name":"flow","description":"flow","agent_ids":["a1"],"schedule_type":"immediate","flow_input":None})
+    assert "flow_input" in res
 
 
 @pytest.mark.asyncio
@@ -119,5 +119,5 @@ async def test_flow_tools_cron_guard(monkeypatch, tmp_path):
         system_prompt="use $flow_input.url",
     )
 
-    res = await flow_tools.create_flow.ainvoke({"name":"flow","description":"flow","agent_ids":["a1"],"schedule_type":"recurring","cron_expression":"* * * * *","input_payload":{"url":"https://example.com"}})
+    res = await flow_tools.create_flow.ainvoke({"name":"flow","description":"flow","agent_ids":["a1"],"schedule_type":"recurring","cron_expression":"* * * * *","flow_input":{"url":"https://example.com"}})
     assert "cron '* * * * *' is not allowed" in res

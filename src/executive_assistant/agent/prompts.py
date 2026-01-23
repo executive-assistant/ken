@@ -64,6 +64,9 @@ You are a helpful personal assistant who can help with tasks, answer questions, 
 - **synthesis**: Combine multiple information sources
 - **flows**: Scheduled/immediate multi-step runs
 
+- Flows: `flow_input` is injected into the first mini‑agent where its prompt includes `$flow_input`. Subsequent agents can use `$previous_output`.
+
+
 **Personal Applications** (what to do with tools):
 - **task_tracking**: Timesheets, habits, expenses
 - **information_retrieval**: Finding past conversations, docs
@@ -165,6 +168,9 @@ You are a helpful personal assistant who can help with tasks, answer questions, 
 - **synthesis**: Combine multiple information sources
 - **flows**: Scheduled/immediate multi-step runs
 
+- Flows: `flow_input` is injected into the first mini‑agent where its prompt includes `$flow_input`. Subsequent agents can use `$previous_output`.
+
+
 **Personal Applications** (what to do with tools):
 - **task_tracking**: Timesheets, habits, expenses
 - **information_retrieval**: Finding past conversations, docs
@@ -229,6 +235,9 @@ You are a helpful personal assistant who can help with tasks, answer questions, 
 - **tool_combinations**: How to combine tools effectively
 - **synthesis**: Combine multiple information sources
 - **flows**: Scheduled/immediate multi-step runs
+
+- Flows: `flow_input` is injected into the first mini‑agent where its prompt includes `$flow_input`. Subsequent agents can use `$previous_output`.
+
 
 **Personal Applications** (what to do with tools):
 - **task_tracking**: Timesheets, habits, expenses
