@@ -6,6 +6,7 @@ Uses dateparser for flexible natural language date/time parsing.
 
 import re
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from langchain_core.tools import tool
 import dateparser
@@ -31,7 +32,7 @@ async def _refresh_reminder_meta(thread_id: str) -> None:
         return
 
 
-def _parse_time_expression(time_str: str) -> datetime:
+def _parse_time_expression(time_str: str, timezone: str | None = None) -> datetime:
     """Parse time expressions using dateparser.
 
     Supports many natural language formats:
@@ -44,15 +45,26 @@ def _parse_time_expression(time_str: str) -> datetime:
 
     Args:
         time_str: Time expression to parse
+        timezone: Optional IANA timezone name (e.g., "America/New_York")
 
     Returns:
-        datetime object representing the parsed time
+        datetime object representing the parsed time (timezone-aware if timezone provided)
 
     Raises:
         ValueError: If the time expression cannot be parsed
     """
     time_str = time_str.strip()
-    now = datetime.now()
+
+    # Use timezone-aware now if timezone is provided
+    if timezone:
+        try:
+            tz = ZoneInfo(timezone)
+            now = datetime.now(tz)
+        except Exception:
+            # Invalid timezone, fall back to UTC
+            now = datetime.now()
+    else:
+        now = datetime.now()
 
     # Configuration for dateparser
     settings_config = {
@@ -124,6 +136,7 @@ async def reminder_set(
     message: str,
     time: str,
     recurrence: str = "",
+    timezone: str = "",
 ) -> str:
     """Set a reminder for the user.
 
@@ -137,6 +150,8 @@ async def reminder_set(
             - Numeric: "0130hr" (1:30 AM), "1430hr" (2:30 PM)
             - Full date: "2025-01-15 14:00", "15 Jan 2025 2pm"
         recurrence: Optional recurrence pattern (e.g., "daily", "weekly", "daily at 9am")
+        timezone: Optional IANA timezone name (e.g., "America/New_York", "Asia/Shanghai", "UTC").
+                  If provided, the reminder time will be interpreted in this timezone.
 
     Returns:
         Confirmation message with reminder ID
@@ -148,7 +163,7 @@ async def reminder_set(
         return "Error: Could not determine conversation context for reminder."
 
     try:
-        due_time = _parse_time_expression(time)
+        due_time = _parse_time_expression(time, timezone if timezone else None)
     except ValueError as e:
         return str(e)
 
@@ -157,11 +172,13 @@ async def reminder_set(
         message=message,
         due_time=due_time,
         recurrence=recurrence or None,
+        timezone=timezone if timezone else None,
     )
 
     await _refresh_reminder_meta(thread_id)
     recurrence_str = f" (recurring: {recurrence})" if recurrence else ""
-    return f"Reminder set for {due_time.strftime('%Y-%m-%d %H:%M')}{recurrence_str}. ID: {reminder.id}"
+    timezone_str = f" ({timezone})" if timezone else ""
+    return f"Reminder set for {due_time.strftime('%Y-%m-%d %H:%M')}{timezone_str}{recurrence_str}. ID: {reminder.id}"
 
 
 @tool
@@ -174,7 +191,7 @@ async def reminder_list(
         status: Filter by status ('pending', 'sent', 'cancelled', 'failed'). Empty for all.
 
     Returns:
-        Formatted list of reminders
+        Formatted list of reminders with timezone information
     """
     storage = await _get_storage()
     thread_id = get_thread_id()
@@ -193,13 +210,14 @@ async def reminder_list(
         return "No reminders found."
 
     record_reminder_count(thread_id, len(reminders))
-    lines = [f"{'ID':<5} {'Status':<10} {'Due Time':<20} {'Message'}"]
+    lines = [f"{'ID':<5} {'Status':<10} {'Due Time':<25} {'Message'}"]
     lines.append("-" * 80)
 
     for r in reminders:
         due_str = r.due_time.strftime("%Y-%m-%d %H:%M")
+        timezone_str = f" {r.timezone}" if r.timezone else ""
         recurrence_str = " (recurring)" if r.is_recurring else ""
-        lines.append(f"{r.id:<5} {r.status:<10} {due_str:<20} {r.message}{recurrence_str}")
+        lines.append(f"{r.id:<5} {r.status:<10} {due_str + timezone_str:<25} {r.message}{recurrence_str}")
 
     return "\n".join(lines)
 
@@ -244,6 +262,7 @@ async def reminder_edit(
     reminder_id: int,
     message: str = "",
     time: str = "",
+    timezone: str = "",
 ) -> str:
     """Edit an existing reminder.
 
@@ -251,6 +270,8 @@ async def reminder_edit(
         reminder_id: The ID of the reminder to edit
         message: New reminder message (leave empty to keep current)
         time: New due time (leave empty to keep current)
+        timezone: New timezone (e.g., "America/New_York", "Asia/Shanghai", "UTC").
+                  Leave empty to keep current. Use "UTC" to remove timezone.
 
     Returns:
         Confirmation message
@@ -279,11 +300,23 @@ async def reminder_edit(
 
     if time:
         try:
-            new_due_time = _parse_time_expression(time)
+            # Use existing timezone if not specified
+            tz = timezone if timezone else reminder.timezone
+            new_due_time = _parse_time_expression(time, tz if tz else None)
         except ValueError as e:
             return str(e)
 
-    updated = await storage.update(reminder_id, new_message, new_due_time)
+    # Handle timezone update (empty string means no change, "UTC" or similar means set to that)
+    new_timezone = None
+    if timezone:
+        new_timezone = timezone if timezone != "remove" else None
+
+    updated = await storage.update(
+        reminder_id,
+        new_message,
+        new_due_time,
+        timezone=new_timezone,
+    )
 
     if updated:
         await _refresh_reminder_meta(thread_id)
@@ -291,7 +324,10 @@ async def reminder_edit(
         if new_message:
             changes.append(f"message to '{new_message}'")
         if new_due_time:
-            changes.append(f"time to {new_due_time.strftime('%Y-%m-%d %H:%M')}")
+            tz_str = f" {updated.timezone}" if updated.timezone else ""
+            changes.append(f"time to {new_due_time.strftime('%Y-%m-%d %H:%M')}{tz_str}")
+        if new_timezone is not None:
+            changes.append(f"timezone to {new_timezone if new_timezone else 'None'}")
 
         change_str = " and ".join(changes) if changes else "nothing"
         return f"Reminder {reminder_id} updated: {change_str}."
