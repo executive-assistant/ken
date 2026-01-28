@@ -15,6 +15,7 @@ class Reminder:
     thread_id: str
     message: str
     due_time: datetime
+    timezone: str | None  # IANA timezone name (e.g., "America/New_York")
     status: str  # pending, sent, cancelled, failed
     recurrence: str | None
     created_at: datetime
@@ -52,6 +53,7 @@ class ReminderStorage:
                 thread_id VARCHAR(255) NOT NULL,
                 message TEXT NOT NULL,
                 due_time TIMESTAMP NOT NULL,
+                timezone VARCHAR(50),
                 status VARCHAR(20) DEFAULT 'pending',
                 recurrence VARCHAR(100),
                 created_at TIMESTAMP DEFAULT NOW(),
@@ -65,6 +67,20 @@ class ReminderStorage:
         ]
         for statement in statements:
             await conn.execute(statement)
+
+        # Add timezone column if it doesn't exist (migration for existing databases)
+        has_timezone = await conn.fetchval(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_name = 'reminders'
+                  AND column_name = 'timezone'
+            )
+            """
+        )
+        if not has_timezone:
+            await conn.execute("ALTER TABLE reminders ADD COLUMN IF NOT EXISTS timezone VARCHAR(50);")
 
         has_user_id = await conn.fetchval(
             """
@@ -87,6 +103,7 @@ class ReminderStorage:
         message: str,
         due_time: datetime,
         recurrence: str | None = None,
+        timezone: str | None = None,
     ) -> Reminder:
         """Create a new reminder."""
         conn = await asyncpg.connect(self._conn_string)
@@ -94,14 +111,15 @@ class ReminderStorage:
             await self._ensure_schema(conn)
             row = await conn.fetchrow(
                 """
-                INSERT INTO reminders (thread_id, message, due_time, recurrence)
-                VALUES ($1, $2, $3, $4)
+                INSERT INTO reminders (thread_id, message, due_time, recurrence, timezone)
+                VALUES ($1, $2, $3, $4, $5)
                 RETURNING *
                 """,
                 thread_id,
                 message,
                 due_time,
                 recurrence,
+                timezone,
             )
         finally:
             await conn.close()
@@ -238,6 +256,7 @@ class ReminderStorage:
         message: str | None = None,
         due_time: datetime | None = None,
         recurrence: str | None = None,
+        timezone: str | None = None,
     ) -> Reminder | None:
         """Update reminder fields."""
         updates = []
@@ -257,6 +276,11 @@ class ReminderStorage:
         if recurrence is not None:
             updates.append(f"recurrence = ${param_count}")
             params.append(recurrence)
+            param_count += 1
+
+        if timezone is not None:
+            updates.append(f"timezone = ${param_count}")
+            params.append(timezone)
             param_count += 1
 
         if not updates:
@@ -289,6 +313,7 @@ class ReminderStorage:
             thread_id=row["thread_id"],
             message=row["message"],
             due_time=row["due_time"],
+            timezone=row.get("timezone"),  # Use .get() for backward compatibility
             status=row["status"],
             recurrence=row["recurrence"],
             created_at=row["created_at"],
