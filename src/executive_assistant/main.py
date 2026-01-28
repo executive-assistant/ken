@@ -8,6 +8,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
+# Load environment variables from .env file before importing other modules
+from dotenv import load_dotenv
+load_dotenv("docker/.env", override=False)
+
 from executive_assistant.config import create_model, settings
 from executive_assistant.config.loader import get_yaml_defaults
 from executive_assistant.config.llm_factory import validate_llm_config
