@@ -68,15 +68,32 @@ def create_user_skill(
     if tags:
         tag_list = [t.strip() for t in tags.split(",") if t.strip()]
 
+    # Build tags string for markdown
+    tags_str = ", ".join(tag_list) if tag_list else "user_skill"
+
     # ─────────────────────────────────────────────────────────────
     # Build skill markdown
     # ─────────────────────────────────────────────────────────────
     timestamp = datetime.now().isoformat()
-    skill_md = f"""# {name.title()}
+
+    # Only add "## Overview" header if content doesn't already have it
+    if content.strip().startswith("##"):
+        skill_md = f"""# {name.title()}
 
 Description: {description}
 
-Tags: {", ".join(tag_list)} if tag_list else "user_skill"}
+Tags: {tags_str}
+
+*Created: {timestamp}*
+
+{content}
+"""
+    else:
+        skill_md = f"""# {name.title()}
+
+Description: {description}
+
+Tags: {tags_str}
 
 *Created: {timestamp}*
 
