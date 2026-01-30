@@ -78,7 +78,11 @@ middleware:
   # Summarization Middleware - reduces context size when it gets too large
   summarization:
     enabled: true
+    # [SCOPE: Total LLM request size] Includes: system prompt + tool definitions + messages
+    # Triggers when last LLM request reached this count (~4,300 message tokens effective)
     max_tokens: 10000 # Trigger summarization at this token count (see note below)
+    # [SCOPE: Message buffer AFTER summarization] Preserves most recent ~2,000 tokens of messages
+    # Results in ~15-20 recent messages + summary (5:1 ratio prevents excessive context loss)
     target_tokens: 2000 # Target size after summarization (5:1 ratio for balanced context retention)
     # NOTE: max_tokens may trigger early (at ~4000-4500 actual message tokens) due to
     # LangChain checking usage_metadata which includes system prompt + tools overhead.

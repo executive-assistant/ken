@@ -196,9 +196,12 @@ class Settings(BaseSettings):
     #
     # With max_tokens=10,000: Effective message trigger = 10,000 - 5,700 = ~4,300 tokens
     # With target_tokens=2,000: Preserves ~15-20 recent messages after summarization (5:1 ratio)
+    #
+    # [SCOPE: Total LLM request size] Triggers when last request hit this token count
     MW_SUMMARIZATION_MAX_TOKENS: int = _yaml_field(
         "MIDDLEWARE_SUMMARIZATION_MAX_TOKENS", 10_000
     )
+    # [SCOPE: Message buffer size AFTER summarization] Preserves most recent ~2,000 tokens
     MW_SUMMARIZATION_TARGET_TOKENS: int = _yaml_field(
         "MIDDLEWARE_SUMMARIZATION_TARGET_TOKENS", 2_000  # Increased to 5:1 ratio for better context retention
     )
