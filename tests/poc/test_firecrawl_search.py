@@ -61,31 +61,22 @@ async def test_firecrawl_search():
 
 
 def test_search_tool():
-    """Test unified search tool with provider switching."""
-    import asyncio
-    from executive_assistant.tools.search_tool import _search_with_searxng, _search_with_firecrawl
+    """Test unified search tool with Firecrawl."""
+    from executive_assistant.tools.search_tool import search_web
 
-    print("\nTesting unified search_tool.py...")
+    print("\nTesting search_tool.py with Firecrawl...")
 
-    # Test current provider
-    provider = settings.SEARCH_PROVIDER
-    print(f"Current SEARCH_PROVIDER: {provider}")
+    if not settings.FIRECRAWL_API_KEY:
+        print("❌ FIRECRAWL_API_KEY not configured")
+        return False
 
-    if provider == "firecrawl":
-        if not settings.FIRECRAWL_API_KEY:
-            print("❌ Firecrawl selected but API key not configured")
-            return False
-
-        # Test Firecrawl search
-        result = asyncio.run(_search_with_firecrawl("test search", 2))
-        print(f"Result preview: {result[:200]}...")
-        print("✅ Firecrawl search works!")
-    else:
-        # Test SearXNG search
-        result = _search_with_searxng("test search", 2)
-        print(f"Result preview: {result[:200]}...")
-        print("✅ SearXNG search works!")
-
+    # Test Firecrawl search
+    result = search_web.invoke({
+        "query": "test search",
+        "num_results": 2,
+    })
+    print(f"Result preview: {result[:200]}...")
+    print("✅ Firecrawl search works!")
     return True
 
 
