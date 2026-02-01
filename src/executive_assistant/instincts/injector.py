@@ -5,6 +5,7 @@ them for injection into the agent's system prompt between BASE_PROMPT and CHANNE
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import Any
 
 from executive_assistant.storage.instinct_storage import get_instinct_storage
@@ -200,21 +201,63 @@ Adjust your explanations:
         if not instincts:
             return ""
 
-        # Apply metadata-based confidence adjustments
-        for instinct in instincts:
-            metadata = instinct.get("metadata", {})
-            occurrence_count = metadata.get("occurrence_count", 0)
+        # Apply comprehensive metadata-based confidence adjustments
+        scored_instincts = []
+        now = datetime.now(timezone.utc)
 
-            # Boost confidence for frequently-reinforced instincts
-            if occurrence_count >= 5:
-                # Cap boost at +0.15
-                boost = min(0.15, occurrence_count * 0.03)
-                instinct["confidence"] = min(1.0, instinct["confidence"] + boost)
-                instinct["confidence_boosted"] = True  # Track for debugging
+        for instinct in instincts:
+            base_confidence = instinct["confidence"]
+            metadata = instinct.get("metadata", {})
+
+            # Factor 1: Occurrence count (frequency)
+            occurrence_count = metadata.get("occurrence_count", 0)
+            frequency_boost = min(0.15, occurrence_count * 0.03)
+
+            # Factor 2: Recency (staleness penalty)
+            last_triggered_str = metadata.get("last_triggered")
+            if last_triggered_str:
+                try:
+                    last_triggered = datetime.fromisoformat(last_triggered_str)
+                    days_since_trigger = (now - last_triggered).days
+                    staleness_penalty = max(-0.2, -days_since_trigger * 0.01)
+                except Exception:
+                    staleness_penalty = -0.1  # Unable to parse
+            else:
+                staleness_penalty = -0.1  # Never triggered
+
+            # Factor 3: Success rate
+            success_rate = metadata.get("success_rate", 1.0)
+            success_multiplier = max(0.8, success_rate)
+
+            # Combine factors
+            final_confidence = base_confidence + frequency_boost + staleness_penalty
+            final_confidence *= success_multiplier
+            final_confidence = max(0.0, min(1.0, final_confidence))
+
+            # Store breakdown for debugging
+            instinct["final_confidence"] = final_confidence
+            instinct["confidence_breakdown"] = {
+                "base": base_confidence,
+                "frequency_boost": frequency_boost,
+                "staleness_penalty": staleness_penalty,
+                "success_multiplier": success_multiplier,
+            }
+
+            scored_instincts.append(instinct)
+
+            # Log significant adjustments
+            if abs(final_confidence - base_confidence) > 0.1:
                 logger.debug(
-                    f"Boosted confidence by {boost:.3f} (occurrence_count: {occurrence_count}) "
-                    f"for: {instinct['action'][:50]}"
+                    f"Confidence adjustment: {base_confidence:.2f} → {final_confidence:.2f} "
+                    f"(freq:+{frequency_boost:.2f}, staleness:{staleness_penalty:.2f}, "
+                    f"success:{success_multiplier:.2f}) | {instinct['action'][:50]}"
                 )
+
+        # Filter by final confidence
+        instincts = [i for i in scored_instincts if i["final_confidence"] >= min_confidence]
+
+        # Sort by final confidence
+        instincts.sort(key=lambda i: i["final_confidence"], reverse=True)
 
         # Resolve conflicts: remove contradictory instincts
         instincts = self._resolve_conflicts(instincts)

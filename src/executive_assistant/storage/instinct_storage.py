@@ -69,6 +69,13 @@ def _utc_now() -> str:
 class InstinctStorage:
     """Storage for instinct behavioral patterns with confidence scoring."""
 
+    # Temporal decay configuration
+    DECAY_CONFIG = {
+        "half_life_days": 30,        # Confidence halves every 30 days without reinforcement
+        "min_confidence": 0.3,       # Never decay below this
+        "reinforcement_reset": True, # Reinforcement resets decay timer
+    }
+
     def __init__(self) -> None:
         pass
 
@@ -264,6 +271,7 @@ class InstinctStorage:
         status: str = "enabled",
         min_confidence: float = 0.0,
         thread_id: str | None = None,
+        apply_decay: bool = True,
     ) -> list[dict[str, Any]]:
         """
         List instincts with optional filtering.
@@ -273,14 +281,26 @@ class InstinctStorage:
             status: Filter by status (default: "enabled")
             min_confidence: Minimum confidence score
             thread_id: Thread identifier
+            apply_decay: Whether to apply temporal decay (default: True)
 
         Returns:
-            List of instincts
+            List of instincts with decayed confidence
         """
         snapshot = self._load_snapshot(thread_id)
 
         results = []
         for instinct in snapshot.values():
+            # Apply temporal decay if enabled
+            if apply_decay:
+                try:
+                    adjusted_confidence = self.adjust_confidence_for_decay(
+                        instinct["id"], thread_id
+                    )
+                    instinct["confidence"] = adjusted_confidence
+                except Exception:
+                    # If decay fails, use original confidence
+                    pass
+
             # Filter by status
             if instinct["status"] != status:
                 continue
@@ -289,7 +309,7 @@ class InstinctStorage:
             if domain and instinct["domain"] != domain:
                 continue
 
-            # Filter by confidence
+            # Filter by confidence (after decay)
             if instinct["confidence"] < min_confidence:
                 continue
 
@@ -344,6 +364,204 @@ class InstinctStorage:
         # Sort by confidence and limit
         applicable.sort(key=lambda x: x["confidence"], reverse=True)
         return applicable[:max_count]
+
+    # ========================================================================
+    # TEMPORAL DECAY: Confidence fades over time without reinforcement
+    # ========================================================================
+
+    def adjust_confidence_for_decay(
+        self,
+        instinct_id: str,
+        thread_id: str | None = None,
+    ) -> float:
+        """Adjust instinct confidence based on age and lack of reinforcement.
+
+        Args:
+            instinct_id: Instinct identifier
+            thread_id: Thread identifier
+
+        Returns:
+            Adjusted confidence score
+        """
+        instinct = self.get_instinct(instinct_id, thread_id)
+
+        if not instinct:
+            raise ValueError(f"Instinct {instinct_id} not found")
+
+        created_at = datetime.fromisoformat(instinct["created_at"])
+        days_old = (datetime.now(timezone.utc) - created_at).days
+
+        metadata = instinct.get("metadata", {})
+        occurrence_count = metadata.get("occurrence_count", 0)
+
+        # Don't decay heavily reinforced instincts
+        if occurrence_count >= 5:
+            return instinct["confidence"]
+
+        # Calculate decay
+        half_life = self.DECAY_CONFIG["half_life_days"]
+        min_conf = self.DECAY_CONFIG["min_confidence"]
+
+        # Exponential decay: confidence * (0.5 ^ (days_old / half_life))
+        decay_factor = 0.5 ** (days_old / half_life)
+        new_confidence = max(min_conf, instinct["confidence"] * decay_factor)
+
+        # Update if significantly changed
+        if abs(new_confidence - instinct["confidence"]) > 0.05:
+            self._set_confidence(instinct_id, new_confidence, thread_id)
+            # Update in-memory copy for immediate return
+            instinct["confidence"] = new_confidence
+
+        return new_confidence
+
+    def reinforce_instinct(
+        self,
+        instinct_id: str,
+        thread_id: str | None = None,
+    ) -> None:
+        """Record that an instinct was triggered and relevant.
+
+        Resets decay timer by bumping confidence slightly.
+
+        Args:
+            instinct_id: Instinct identifier
+            thread_id: Thread identifier
+        """
+        instinct = self.get_instinct(instinct_id, thread_id)
+        if not instinct:
+            return
+
+        now = _utc_now()
+
+        # Update metadata
+        instinct["metadata"]["occurrence_count"] = instinct["metadata"].get("occurrence_count", 0) + 1
+        instinct["metadata"]["last_triggered"] = now
+        instinct["updated_at"] = now
+
+        # Reset decay by bumping confidence slightly
+        instinct["confidence"] = min(1.0, instinct["confidence"] + 0.05)
+
+        # Save to storage
+        self._update_snapshot(instinct, thread_id)
+
+        # Record reinforcement event
+        event = {
+            "event": "reinforce",
+            "id": instinct_id,
+            "confidence": instinct["confidence"],
+            "occurrence_count": instinct["metadata"]["occurrence_count"],
+            "ts": now,
+        }
+        self._append_event(event, thread_id)
+
+    def get_stale_instincts(
+        self,
+        thread_id: str | None = None,
+        days_since_trigger: int = 30,
+        min_confidence: float = 0.5,
+    ) -> list[dict]:
+        """Get instincts that haven't been triggered recently.
+
+        Useful for:
+        - Identifying outdated patterns
+        - Suggesting instinct cleanup
+        - Debugging why certain behaviors changed
+
+        Args:
+            thread_id: Thread identifier
+            days_since_trigger: Days threshold for staleness
+            min_confidence: Minimum confidence to check
+
+        Returns:
+            List of stale instincts with days_since_trigger added
+        """
+        instincts = self.list_instincts(
+            thread_id=thread_id,
+            min_confidence=min_confidence,
+            apply_decay=False,  # Don't apply decay when checking staleness
+        )
+
+        stale = []
+        now = datetime.now(timezone.utc)
+
+        for instinct in instincts:
+            metadata = instinct.get("metadata", {})
+            last_triggered_str = metadata.get("last_triggered")
+
+            if not last_triggered_str:
+                # Never triggered = definitely stale
+                instinct["days_since_trigger"] = 999  # Large number
+                stale.append(instinct)
+                continue
+
+            try:
+                last_triggered = datetime.fromisoformat(last_triggered_str)
+                days = (now - last_triggered).days
+
+                if days >= days_since_trigger:
+                    instinct["days_since_trigger"] = days
+                    stale.append(instinct)
+            except Exception:
+                # Unable to parse date, treat as stale
+                instinct["days_since_trigger"] = 999
+                stale.append(instinct)
+
+        return stale
+
+    def cleanup_stale_instincts(
+        self,
+        thread_id: str | None = None,
+        days_since_trigger: int = 60,
+        min_confidence: float = 0.4,
+    ) -> int:
+        """Remove instincts that are old and rarely triggered.
+
+        Args:
+            thread_id: Thread identifier
+            days_since_trigger: Days threshold for staleness
+            min_confidence: Maximum confidence to remove
+
+        Returns:
+            Count of removed instincts
+        """
+        stale = self.get_stale_instincts(
+            thread_id=thread_id,
+            days_since_trigger=days_since_trigger,
+            min_confidence=min_confidence,
+        )
+
+        removed_count = 0
+        for instinct in stale:
+            metadata = instinct.get("metadata", {})
+            occurrence_count = metadata.get("occurrence_count", 0)
+
+            # Only remove if rarely triggered
+            if occurrence_count < 3:
+                # Record deletion event
+                event = {
+                    "event": "delete",
+                    "id": instinct["id"],
+                    "reason": "cleanup_stale",
+                    "occurrence_count": occurrence_count,
+                    "days_since_trigger": instinct.get("days_since_trigger", 0),
+                    "ts": _utc_now(),
+                }
+                self._append_event(event, thread_id)
+
+                # Delete from snapshot
+                snapshot = self._load_snapshot(thread_id)
+                if instinct["id"] in snapshot:
+                    del snapshot[instinct["id"]]
+                    self._save_snapshot(snapshot, thread_id)
+                    removed_count += 1
+
+                    logger.info(
+                        f"Cleaned up stale instinct: {instinct['action'][:50]} "
+                        f"(occurrence_count: {occurrence_count}, "
+                        f"days_since_trigger: {instinct.get('days_since_trigger', 0)})"
+                    )
+
+        return removed_count
 
     # ========================================================================
     # STORAGE: JSONL + Snapshot

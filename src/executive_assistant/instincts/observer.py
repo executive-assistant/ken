@@ -264,6 +264,116 @@ class InstinctObserver:
 
         return detected
 
+    # ========================================================================
+    # SUCCESS RATE TRACKING: Learn which instincts actually help
+    # ========================================================================
+
+    # Satisfaction and frustration patterns for outcome detection
+    SATISFACTION_PATTERNS = {
+        "triggers": [
+            r"\b(perfect|great|awesome|thanks|exactly what)\b",
+            r"\b(that's what I needed|just what I wanted|love it)\b",
+            r"\b(amazing|brilliant|excellent)\b",
+            r"👍|✅|🎉|😊",
+        ],
+    }
+
+    FRUSTRATION_PATTERNS = {
+        "triggers": [
+            r"\b(nevermind|forget it|whatever)\b",
+            r"^(ok|okay|fine)[!.]*$",
+            r"\?+$",
+        ],
+    }
+
+    def record_outcome(
+        self,
+        instinct_id: str,
+        success: bool,
+        thread_id: str | None = None,
+    ) -> None:
+        """Record whether applying an instinct led to success.
+
+        Args:
+            instinct_id: Instinct identifier
+            success: True if user was satisfied, False if frustrated
+            thread_id: Thread identifier
+        """
+        instinct = self.storage.get_instinct(instinct_id, thread_id)
+        if not instinct:
+            return
+
+        metadata = instinct.get("metadata", {})
+
+        # Update success rate (moving average)
+        current_rate = metadata.get("success_rate", 1.0)
+        alpha = 0.2  # Learning rate (how fast to adapt)
+        new_rate = (alpha * (1.0 if success else 0.0)) + ((1 - alpha) * current_rate)
+
+        metadata["success_rate"] = new_rate
+        instinct["metadata"] = metadata
+        instinct["updated_at"] = _utc_now()
+
+        # Save to storage
+        self.storage._update_snapshot(instinct, thread_id)
+
+        logger.debug(
+            f"Recorded outcome for instinct: {success} | "
+            f"success_rate: {current_rate:.2f} → {new_rate:.2f} | "
+            f"{instinct['action'][:50]}"
+        )
+
+    def observe_conversation_outcome(
+        self,
+        user_message: str,
+        applied_instinct_ids: list[str],
+        thread_id: str | None = None,
+    ) -> list[str]:
+        """Detect if instincts led to positive or negative outcome.
+
+        Args:
+            user_message: Latest user message
+            applied_instinct_ids: Instincts that were applied in previous response
+            thread_id: Thread identifier
+
+        Returns:
+            List of instinct IDs that were updated
+        """
+        if not applied_instinct_ids:
+            return []
+
+        updated = []
+
+        # Check for satisfaction
+        for pattern in self.SATISFACTION_PATTERNS["triggers"]:
+            if re.search(pattern, user_message, re.IGNORECASE):
+                # Record success for all applied instincts
+                for instinct_id in applied_instinct_ids:
+                    self.record_outcome(instinct_id, success=True, thread_id=thread_id)
+                    updated.append(instinct_id)
+
+                if updated:
+                    logger.info(
+                        f"Detected satisfaction - reinforced {len(updated)} instincts"
+                    )
+                return updated
+
+        # Check for frustration
+        for pattern in self.FRUSTRATION_PATTERNS["triggers"]:
+            if re.search(pattern, user_message, re.IGNORECASE):
+                # Record failure for all applied instincts
+                for instinct_id in applied_instinct_ids:
+                    self.record_outcome(instinct_id, success=False, thread_id=thread_id)
+                    updated.append(instinct_id)
+
+                if updated:
+                    logger.warning(
+                        f"Detected frustration - penalized {len(updated)} instincts"
+                    )
+                return updated
+
+        return updated
+
 
 _instinct_observer = InstinctObserver()
 
