@@ -401,9 +401,11 @@ Assistant: [Uses web_scraping skill + fetch tool]
 - **Use case**: Calculations, data processing, file transformations
 
 ### Web Search
-- **SearXNG integration**: Privacy-focused search aggregator
+- **Flexible providers**: Choose between SearXNG (self-hosted) or Firecrawl (cloud)
+- **SearXNG**: Privacy-focused metasearch engine, free (self-hosted)
+- **Firecrawl**: Premium web search with content extraction, optional result scraping
+- **Easy switch**: Set `SEARCH_PROVIDER=searxng` or `SEARCH_PROVIDER=firecrawl` in .env
 - **Playwright fallback**: JS-heavy pages can be scraped with the browser tool
-- **No API key needed**: Self-hosted SearXNG instance
 
 ### Time & Reminders
 - **Timezone-aware**: Current time/date in any timezone

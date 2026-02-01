@@ -279,6 +279,9 @@ class Settings(BaseSettings):
         return v or None
 
     # Web Search (external service - configure in .env)
+    SEARCH_PROVIDER: Literal["searxng", "firecrawl"] = _yaml_field(
+        "SEARCH_PROVIDER", "searxng"
+    )
     SEARXNG_HOST: str | None = None
 
     # Logging
@@ -455,6 +458,20 @@ class Settings(BaseSettings):
         instincts_dir.mkdir(parents=True, exist_ok=True)
         return instincts_dir
 
+    def get_thread_mcp_dir(self, thread_id: str) -> Path:
+        """
+        Get MCP directory for a thread.
+
+        Returns: data/users/{thread_id}/mcp/
+
+        This directory contains user-specific MCP server configurations:
+        - mcp.json: Local (stdio) MCP servers
+        - mcp_remote.json: Remote (HTTP/SSE) MCP servers
+        """
+        mcp_dir = self.get_thread_root(thread_id) / "mcp"
+        mcp_dir.mkdir(parents=True, exist_ok=True)
+        return mcp_dir
+
     # ============================================================================
     # Context-Aware Routing (thread_id only)
     # ============================================================================
@@ -522,6 +539,22 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """Get cached settings instance."""
     return Settings()
+
+
+def get_thread_mcp_dir() -> Path:
+    """Convenience function to get MCP directory for a thread.
+
+    Uses thread_id from context if available.
+
+    Returns: data/users/{thread_id}/mcp/
+    """
+    from executive_assistant.storage.file_sandbox import get_thread_id
+
+    thread_id = get_thread_id()
+    if not thread_id:
+        raise RuntimeError("No thread_id in context")
+
+    return get_settings().get_thread_mcp_dir(thread_id)
 
 
 # Singleton instance

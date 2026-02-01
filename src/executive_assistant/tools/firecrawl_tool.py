@@ -217,6 +217,161 @@ async def firecrawl_crawl(
 
 
 @tool
+async def firecrawl_search(
+    query: str,
+    num_results: int = 5,
+    sources: str | None = None,
+    scrape_results: bool = False,
+) -> str:
+    """
+    Search the web using Firecrawl API.
+
+    Firecrawl provides:
+    - High-quality web search results
+    - Optional content extraction from search results
+    - Advanced filtering (location, time, categories)
+    - No need for separate SearXNG instance
+
+    Args:
+        query: Search query string
+        num_results: Number of results to return (default: 5, max: 20)
+        sources: Result types - comma-separated list.
+                Options: "web", "news", "images".
+                Default: "web".
+        scrape_results: If True, scrape content from search results.
+                       Costs additional credits but provides full content.
+
+    Returns:
+        Search results as formatted text with titles, URLs, and snippets.
+        If scrape_results=True, includes full content from each result.
+
+    Examples:
+        >>> await firecrawl_search("python async await tutorial")
+        "Found 5 results:\\n1. Python Async Await - Real Python..."
+
+        >>> await firecrawl_search("latest AI news", sources="news")
+        "Found 5 news results:\\n1. ..."
+    """
+    if not _is_firecrawl_configured():
+        return "Error: Firecrawl API key not configured. Set FIRECRAWL_API_KEY environment variable."
+
+    try:
+        # Parse sources
+        if sources:
+            source_list = [{"type": s.strip()} for s in sources.split(",")]
+        else:
+            source_list = [{"type": "web"}]
+
+        # Validate sources
+        valid_sources = {"web", "news", "images"}
+        for source in source_list:
+            if source["type"] not in valid_sources:
+                return f"Invalid source: '{source['type']}'. Valid options: {', '.join(valid_sources)}"
+
+        # Limit num_results
+        num_results = max(1, min(20, int(num_results)))
+
+        # Build request payload
+        payload = {
+            "query": query,
+            "limit": num_results,
+            "sources": source_list,
+        }
+
+        # Optionally scrape search results
+        if scrape_results:
+            payload["scrapeOptions"] = {
+                "formats": ["markdown"],
+                "onlyMainContent": True,
+            }
+
+        result = await _firecrawl_request("/v2/search", payload)
+
+        # Check for errors
+        if result.get("error"):
+            return f"Firecrawl search error: {result['error']}"
+
+        if not result.get("success"):
+            return f"Search failed: {result.get('message', 'Unknown error')}"
+
+        # Format results
+        data = result.get("data", {})
+
+        # Handle different response formats
+        if scrape_results:
+            # Response is an array of scraped results
+            if isinstance(data, list):
+                return _format_scraped_search_results(data, query)
+            # Fallback to web results
+            web_results = data.get("web", [])
+        else:
+            # Response is grouped by source type
+            web_results = data.get("web", [])
+            news_results = data.get("news", [])
+            image_results = data.get("images", [])
+
+            # Combine results (prioritize web, then news, then images)
+            all_results = web_results + news_results + image_results
+            return _format_basic_search_results(all_results, query, sources or "web")
+
+        if not web_results:
+            return f"No results found for: {query}"
+
+        return _format_scraped_search_results(web_results, query)
+
+    except httpx.HTTPStatusError as e:
+        return f"HTTP error {e.response.status_code}: {e.response.text}"
+    except httpx.RequestError as e:
+        return f"Request error: {e}"
+    except Exception as e:
+        return f"Search error: {type(e).__name__}: {e}"
+
+
+def _format_basic_search_results(results: list, query: str, source_type: str) -> str:
+    """Format basic search results without scraped content."""
+    output_lines = [f"Found {len(results)} result(s) for: {query}\n"]
+
+    for i, result in enumerate(results, 1):
+        title = result.get("title", "No title")
+        url = result.get("url", "No URL")
+        description = result.get("description", result.get("snippet", ""))
+
+        output_lines.append(f"{i}. {title}")
+        output_lines.append(f"   URL: {url}")
+        if description:
+            # Truncate description if too long
+            if len(description) > 200:
+                description = description[:197] + "..."
+            output_lines.append(f"   {description}")
+        output_lines.append("")
+
+    return "\n".join(output_lines).strip()
+
+
+def _format_scraped_search_results(results: list, query: str) -> str:
+    """Format search results with scraped content."""
+    output_lines = [f"Found {len(results)} result(s) for: {query} (with content)\n"]
+
+    for i, result in enumerate(results, 1):
+        title = result.get("title", "No title")
+        url = result.get("url", "No URL")
+        markdown = result.get("markdown", "")
+
+        output_lines.append(f"{i}. {title}")
+        output_lines.append(f"   URL: {url}")
+
+        if markdown:
+            # Limit content length
+            if len(markdown) > 1500:
+                markdown = markdown[:1497] + "...\n\n[Content truncated]"
+            output_lines.append(f"\n{markdown}\n")
+
+        output_lines.append("")
+
+    return "\n".join(output_lines).strip()
+
+
+@tool
 async def firecrawl_check_status(job_id: str) -> str:
     """
     Check the status of an asynchronous Firecrawl crawl job.
@@ -292,4 +447,4 @@ def get_firecrawl_tools() -> list:
     """
     if not _is_firecrawl_configured():
         return []
-    return [firecrawl_scrape, firecrawl_crawl, firecrawl_check_status]
+    return [firecrawl_scrape, firecrawl_crawl, firecrawl_check_status, firecrawl_search]
