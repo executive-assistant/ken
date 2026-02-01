@@ -348,6 +348,37 @@ class InstinctStorage:
         snapshot = self._load_snapshot(thread_id)
         return snapshot.get(instinct_id)
 
+    def delete_instinct(self, instinct_id: str, thread_id: str | None = None) -> bool:
+        """Delete an instinct by ID.
+
+        Args:
+            instinct_id: Instinct identifier
+            thread_id: Thread identifier
+
+        Returns:
+            True if deleted, False if not found
+        """
+        snapshot = self._load_snapshot(thread_id)
+
+        if instinct_id not in snapshot:
+            return False
+
+        # Remove from snapshot
+        del snapshot[instant_id]
+        self._save_snapshot(snapshot, thread_id)
+
+        # Append deletion event to JSONL
+        self._append_event(
+            {
+                "event": "delete",
+                "id": instinct_id,
+                "ts": _utc_now(),
+            },
+            thread_id,
+        )
+
+        return True
+
     def get_applicable_instincts(
         self,
         context: str,
@@ -925,14 +956,22 @@ class InstinctStorage:
                     continue
 
             # Create new instinct
-            self.create_instinct(
+            instinct_id = self.create_instinct(
                 trigger=export_instinct["trigger"],
                 action=export_instinct["action"],
                 domain=export_instinct["domain"],
                 confidence=confidence,
                 thread_id=thread_id,
-                metadata=export_instinct.get("metadata", {}),
             )
+
+            # Update metadata if provided
+            metadata = export_instinct.get("metadata", {})
+            if metadata:
+                instinct = self.get_instinct(instinct_id, thread_id)
+                if instinct:
+                    # Merge exported metadata with default metadata
+                    instinct["metadata"].update(metadata)
+                    self._update_snapshot(instinct, thread_id)
 
             imported_count += 1
 
