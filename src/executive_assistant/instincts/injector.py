@@ -4,13 +4,59 @@ The injector retrieves applicable instincts for the current context and formats
 them for injection into the agent's system prompt between BASE_PROMPT and CHANNEL_APPENDIX.
 """
 
+import logging
 from typing import Any
 
 from executive_assistant.storage.instinct_storage import get_instinct_storage
 
+logger = logging.getLogger(__name__)
+
 
 class InstinctInjector:
     """Injector for loading applicable instincts into system prompts."""
+
+    # Conflict resolution rules: (domain, action_keyword) -> overrides
+    CONFLICT_RESOLUTION = {
+        # High-priority overrides
+        ("timing", "urgent"): {
+            "overrides": [
+                ("communication", "detailed"),
+                ("communication", "thorough"),
+                ("communication", "explain"),
+                ("learning_style", "explain"),
+            ],
+            "min_confidence": 0.6,
+        },
+        ("communication", "concise"): {
+            "overrides": [
+                ("communication", "detailed"),
+                ("communication", "elaborate"),
+                ("communication", "thorough"),
+            ],
+            "min_confidence": 0.6,
+        },
+        ("communication", "brief"): {
+            "overrides": [
+                ("communication", "detailed"),
+                ("communication", "elaborate"),
+            ],
+            "min_confidence": 0.6,
+        },
+        ("emotional_state", "frustrated"): {
+            "overrides": [
+                ("workflow", "standard"),
+                ("communication", "brief"),
+            ],
+            "min_confidence": 0.5,  # Lower threshold for emotional state
+        },
+        ("emotional_state", "confused"): {
+            "overrides": [
+                ("communication", "brief"),
+                ("communication", "concise"),
+            ],
+            "min_confidence": 0.5,
+        },
+    }
 
     # Domain-specific guidance templates
     DOMAIN_TEMPLATES = {
@@ -20,10 +66,96 @@ class InstinctInjector:
         "tool_selection": "## Tool Selection Preferences\n{actions}\n",
         "verification": "## Quality Standards\n{actions}\n",
         "timing": "## Timing Preferences\n{actions}\n",
+        # NEW domains
+        "emotional_state": """## Emotional Context
+The user appears to be in the following emotional state:
+{actions}
+
+Adjust your response accordingly:
+- Be extra supportive and patient
+- Offer to break down complex tasks
+- Provide alternative approaches
+""",
+        "learning_style": """## Learning Approach
+Based on past interactions, the user prefers:
+{actions}
+
+Adapt your explanations:
+- Teaching mode: Show reasoning, offer resources
+- Exploration mode: Provide options, explain trade-offs
+- Hands-on mode: Focus on practical implementation
+""",
+        "expertise": """## Known Expertise Areas
+The user has demonstrated knowledge in:
+{actions}
+
+Adjust your explanations:
+- Skip basics in known areas
+- Provide context for new topics
+- Assume familiarity with domain terminology
+""",
     }
 
     def __init__(self) -> None:
         self.storage = get_instinct_storage()
+
+    def _resolve_conflicts(self, instincts: list[dict]) -> list[dict]:
+        """Remove overridden instincts based on priority rules.
+
+        Args:
+            instincts: List of instinct dictionaries
+
+        Returns:
+            Filtered list with conflicts resolved
+        """
+        kept = []
+        removed_count = 0
+
+        for instinct in instincts:
+            domain = instinct["domain"]
+            action = instinct["action"].lower()
+            confidence = instinct["confidence"]
+
+            # Check if this instinct should be kept or overridden
+            should_keep = True
+            override_reason = None
+
+            for kept_instinct in kept:
+                # Check if any kept instinct overrides the current one
+                for (rule_domain, rule_action), rule in self.CONFLICT_RESOLUTION.items():
+                    # Does the kept instinct match a rule?
+                    if (kept_instinct["domain"] == rule_domain and
+                            rule_action in kept_instinct["action"].lower() and
+                            kept_instinct["confidence"] >= rule["min_confidence"]):
+
+                        # Check if current instinct is in the override list
+                        for override_domain, override_action in rule["overrides"]:
+                            if (domain == override_domain and
+                                    override_action in action):
+
+                                should_keep = False
+                                override_reason = (
+                                    f"Overridden by {rule_domain}:{rule_action} "
+                                    f"(confidence: {kept_instinct['confidence']:.2f})"
+                                )
+                                break
+
+                        if not should_keep:
+                            break
+
+                if not should_keep:
+                    break
+
+            if should_keep:
+                kept.append(instinct)
+            else:
+                logger.debug(f"Conflict resolution: {override_reason} | Removed: {instinct['action'][:50]}")
+                removed_count += 1
+
+        if removed_count > 0:
+            logger.info(f"Conflict resolution removed {removed_count} contradictory instincts")
+
+        return kept
 
     def build_instincts_context(
         self,
@@ -67,6 +199,25 @@ class InstinctInjector:
 
         if not instincts:
             return ""
+
+        # Apply metadata-based confidence adjustments
+        for instinct in instincts:
+            metadata = instinct.get("metadata", {})
+            occurrence_count = metadata.get("occurrence_count", 0)
+
+            # Boost confidence for frequently-reinforced instincts
+            if occurrence_count >= 5:
+                # Cap boost at +0.15
+                boost = min(0.15, occurrence_count * 0.03)
+                instinct["confidence"] = min(1.0, instinct["confidence"] + boost)
+                instinct["confidence_boosted"] = True  # Track for debugging
+                logger.debug(
+                    f"Boosted confidence by {boost:.3f} (occurrence_count: {occurrence_count}) "
+                    f"for: {instinct['action'][:50]}"
+                )
+
+        # Resolve conflicts: remove contradictory instincts
+        instincts = self._resolve_conflicts(instincts)
 
         # Group by domain
         by_domain: dict[str, list[dict]] = {}

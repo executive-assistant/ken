@@ -28,6 +28,12 @@ _ALLOWED_DOMAINS = {
     "tool_selection",
     "verification",
     "timing",
+    # NEW: User's emotional/mental state
+    "emotional_state",
+    # NEW: How user prefers to learn
+    "learning_style",
+    # NEW: Domain expertise tracking
+    "expertise",
 }
 
 
@@ -41,6 +47,17 @@ _ALLOWED_SOURCES = {
     "profile-preset",
     "custom-profile",
     "import",
+    # Emotional state detection
+    "frustration-detected",
+    "confusion-detected",
+    "satisfaction-detected",
+    # Expertise tracking
+    "expertise-detected",
+    "domain-detected",
+    # Contextual patterns
+    "urgency-detected",
+    "learning-detected",
+    "exploration-detected",
 }
 
 
