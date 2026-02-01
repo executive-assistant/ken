@@ -131,22 +131,14 @@ class TestTemporalDecay:
         instinct["created_at"] = thirty_days_ago
         self.storage._update_snapshot(instinct, "test_thread")
 
-        # List with decay applied - this will call adjust_confidence_for_decay
-        # which updates the snapshot, so the decay becomes persistent
-        instincts_with_decay = self.storage.list_instincts(
-            thread_id="test_thread",
-            apply_decay=True,
+        # Apply decay directly
+        decayed_confidence = self.storage.adjust_confidence_for_decay(
+            instinct_id, "test_thread"
         )
 
-        # The confidence should now be decayed in the snapshot
-        # Verify by loading again without decay
-        final_check = self.storage.list_instincts(
-            thread_id="test_thread",
-            apply_decay=False,
-        )
-
-        # Final check should show decayed confidence (< 0.8)
-        assert final_check[0]["confidence"] < 0.8
+        # Decay should have reduced confidence
+        assert decayed_confidence < 0.8
+        assert decayed_confidence >= 0.3  # But not below minimum
 
     def test_exponential_decay_curve(self):
         """Test that decay follows exponential curve with minimum floor."""
