@@ -401,9 +401,10 @@ Assistant: [Uses web_scraping skill + fetch tool]
 - **Use case**: Calculations, data processing, file transformations
 
 ### Web Search
-- **SearXNG integration**: Privacy-focused search aggregator
+- **Firecrawl integration**: Premium web search API with high-quality results
+- **Content extraction**: Optional full content scraping from search results
+- **Advanced filters**: Location, time-based, categories (web, news, images)
 - **Playwright fallback**: JS-heavy pages can be scraped with the browser tool
-- **No API key needed**: Self-hosted SearXNG instance
 
 ### Time & Reminders
 - **Timezone-aware**: Current time/date in any timezone
