@@ -25,7 +25,7 @@ def _patch_storage_with_temp_dir(temp_mcp_dir: Path):
     """Helper to patch storage with temp directory."""
     mock_settings = MagicMock()
     mock_settings.get_thread_mcp_dir.return_value = temp_mcp_dir
-    return patch("executive_assistant.storage.user_mcp_storage.get_settings", return_value=mock_settings)
+    return patch("executive_assistant.config.settings.get_settings", return_value=mock_settings)
 
 
 # =============================================================================
@@ -220,7 +220,7 @@ class TestLoadMCPServers:
             "invalid-server": {"invalid": "config"}
         }
 
-        with patch("executive_assistant.tools.registry.MultiServerMCPClient") as mock_client:
+        with patch("langchain_mcp_adapters.client.MultiServerMCPClient") as mock_client:
             mock_client.return_value.get_tools = AsyncMock(return_value=[])
             tools = await _load_mcp_servers(servers, "test")
 
@@ -329,7 +329,7 @@ class TestTieredLoading:
             (temp_mcp_dir / "mcp.json").write_text(json.dumps(user_local_config))
 
             # Mock admin config
-            with patch("executive_assistant.tools.registry.load_mcp_config", return_value=admin_config):
+            with patch("executive_assistant.storage.mcp_storage.load_mcp_config", return_value=admin_config):
                 with patch("langchain_mcp_adapters.client.MultiServerMCPClient") as mock_client:
                     # Set up mock to return different tools for user vs admin
                     user_tool = MagicMock()
@@ -366,7 +366,7 @@ class TestTieredLoading:
             (temp_mcp_dir / "mcp_remote.json").write_text(json.dumps(user_remote_config))
 
             # Mock admin config
-            with patch("executive_assistant.tools.registry.load_mcp_config", return_value=admin_config):
+            with patch("executive_assistant.storage.mcp_storage.load_mcp_config", return_value=admin_config):
                 with patch("langchain_mcp_adapters.client.MultiServerMCPClient") as mock_client:
                     remote_tool = MagicMock()
                     remote_tool.name = "api_tool"
@@ -551,7 +551,10 @@ class TestMCPIntegration:
                 tool1.name = "tool_v1"
                 mock_client.return_value.get_tools = AsyncMock(return_value=[tool1])
 
-                with patch("executive_assistant.storage.user_mcp_storage.get_thread_mcp_dir", return_value=temp_mcp_dir.parent):
+                # Patch storage to use temp dir
+                mock_settings = MagicMock()
+                mock_settings.get_thread_mcp_dir.return_value = temp_mcp_dir
+                with patch("executive_assistant.config.settings.get_settings", return_value=mock_settings):
                     tools_v1 = await load_mcp_tools_tiered()
                     assert tools_v1[0].name == "tool_v1"
 
@@ -580,7 +583,7 @@ class TestMCPErrorHandling:
     @pytest.mark.asyncio
     async def test_import_error_handled_gracefully(self, capsys):
         """Test that ImportError when langchain_mcp_adapters is missing is handled."""
-        with patch("executive_assistant.tools.registry.MultiServerMCPClient", side_effect=ImportError):
+        with patch("langchain_mcp_adapters.client.MultiServerMCPClient", side_effect=ImportError):
             tools = await load_mcp_tools_tiered()
 
             # Should return empty list
@@ -601,7 +604,10 @@ class TestMCPErrorHandling:
             with patch("langchain_mcp_adapters.client.MultiServerMCPClient") as mock_client:
                 mock_client.return_value.get_tools = AsyncMock(side_effect=Exception("Connection failed"))
 
-                with patch("executive_assistant.storage.user_mcp_storage.get_thread_mcp_dir", return_value=temp_mcp_dir.parent):
+                # Patch storage to use temp dir
+                mock_settings = MagicMock()
+                mock_settings.get_thread_mcp_dir.return_value = temp_mcp_dir
+                with patch("executive_assistant.config.settings.get_settings", return_value=mock_settings):
                     # Should not raise, just log and continue
                     tools = await load_mcp_tools_tiered()
 
