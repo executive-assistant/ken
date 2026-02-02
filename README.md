@@ -28,10 +28,12 @@ Executive Assistant is a multi-channel AI agent that helps you stay organized an
 
 ### Intelligent Tool Selection
 Executive Assistant uses a skills system to choose the right approach:
-- **Transactional Database tools** for structured data and temporary analysis (timesheets, logs, datasets)
-- **Vector Transactional Database** for long-term knowledge retrieval (meeting notes, decisions, documentation)
-- **File tools** for browsing and exact-text search (codebases, document archives)
-- **MCP Tools** for extensible external tool integration via Model Context Protocol
+- **Analytics Database (ADB)** for fast analytics on large datasets (100K+ rows, joins, aggregations)
+- **Transactional Database (TDB)** for structured data and quick lookups (timesheets, logs, configs)
+- **Vector Database (VDB)** for semantic search and knowledge retrieval (documents, decisions, conversations)
+- **File tools** for raw file operations (codebases, archives, document management)
+- **Python** for custom logic, data transformations, and calculations
+- **MCP Tools** for extensible external integrations via Model Context Protocol
 - **Skills** for contextual knowledge on how to use tools effectively
 
 You don't need to remember which tool does what—Executive Assistant figures it out from context.
@@ -193,32 +195,186 @@ EXECUTIVE_ASSISTANT_CHANNELS=telegram,http uv run executive_assistant
 
 ## Example Workflows
 
-### Timesheet Tracking
+### 🚀 Build a Mini Analytics Dashboard in Seconds
 ```
-You: Log 4 hours of API development
-Executive Assistant: Created timesheet table and logged entry.
+You: I have sales.csv with 500K rows. Build me a dashboard showing:
+     - Top 10 products by revenue
+     - Monthly trend line
+     - Category breakdown pie chart
+     - Save everything to reports/
 
-You: How many hours did I work this week?
-Executive Assistant: [queries transactional database] You worked 32 hours total:
-     - API development: 16h
-     - Bug fixes: 12h
-     - Meetings: 4h
+Executive Assistant: [Loads ADB for analytics]
+     Importing 500K rows to Analytics Database...
+     Running queries...
+     Generating visualizations...
+
+     ✅ Created 4 reports:
+        - top_products.csv (10 rows)
+        - monthly_trend.csv (24 rows)
+        - category_breakdown.csv (8 rows)
+        - sales_dashboard.png (interactive chart)
+
+     💡 Top product: "Widget Pro" - $127,450 revenue
 ```
 
-### Knowledge Management
+### 📊 Ad-Hoc Analytics on Hundreds of MB Data
 ```
-You: Save this: API rate limit is 1000 req/min for pro accounts
-Executive Assistant: Saved to knowledge base.
+You: Query all logs from 2024, group by endpoint, calculate:
+     - Total requests
+     - Avg response time
+     - P95 response time
+     - Error rate
+     Export to performance_report.csv
 
-You: What's the rate limit for pro accounts?
-Executive Assistant: [searches vector database] 1000 requests per minute.
+Executive Assistant: [Uses Analytics Database (DuckDB)]
+     Scanning logs/2024/*.log (847MB across 12 files)...
+
+     ✅ Analytics complete:
+        - 12.4M requests analyzed in 3.2 seconds
+        - 2,847 unique endpoints
+        - Avg response time: 45ms
+        - P95: 180ms
+        - Error rate: 0.12%
+
+     💾 Saved to: performance_report.csv
 ```
 
-### Data Analysis
+### 🧠 Intelligent Knowledge Retrieval
 ```
-You: Analyze this CSV and find the average
-Executive Assistant: [imports CSV, runs Python] The average is 42.7.
-     I've created a chart and saved it to analysis.png.
+You: What did we decide about API rate limits for enterprise customers?
+     Also, what was the reasoning behind the GraphQL caching strategy?
+
+Executive Assistant: [Searches Vector Database semantically]
+     Found 3 relevant documents:
+
+     1. API Pricing Decision (Jan 15):
+        "Enterprise tier: 10,000 req/min, burstable to 50,000"
+        Reasoning: "Enterprise customers need burst capacity for...
+
+     2. GraphQL Architecture Discussion (Feb 3):
+        "Caching strategy: 5-minute TTL on queries, 1-hour on...
+        Reasoning: "Balance freshness vs performance - analytics...
+
+     3. Rate Limit Implementation (Mar 8):
+        "Token bucket algorithm with per-IP limits"
+        Reasoning: "Prevent abuse while allowing legitimate burst..."
+```
+
+### 🔌 Quick Python Data Pipeline
+```
+You: Download https://api.github.com/repos/langchain-ai/langchain/releases,
+     parse the JSON, extract version numbers and publish dates,
+     plot a timeline of releases, save to github_releases.png
+
+Executive Assistant: [Uses Python + File tools]
+     Fetching releases from GitHub API...
+     Parsing 127 releases...
+     Generating timeline visualization...
+
+     ✅ Done! Created github_releases.png
+     📊 Timeline shows 2.3 releases/week average
+     📈 Trend: Increasing release cadence over past 6 months
+```
+
+### 🏗️ Build a Multi-Step Workflow App
+```
+You: Create a daily report that:
+     1. Fetches yesterday's sales from PostgreSQL
+     2. Enriches with customer data from CRM API
+     3. Calculates churn risk using Python
+     4. Saves high-risk customers to VDB for follow-up
+     5. Emails the summary
+
+Executive Assistant: [Orchestrates TDB + Python + VDB + Web tools]
+     Building workflow...
+
+     Step 1: [TDB Query] Retrieved 1,247 transactions
+     Step 2: [Web Fetch] Enriched 847 customer profiles
+     Step 3: [Python Analysis] Calculated churn scores
+              → 73 high-risk (score > 0.7)
+              → 231 medium-risk (score > 0.4)
+     Step 4: [VDB Store] Indexed high-risk customers for semantic search
+     Step 5: [Email Draft] Report generated at reports/daily_churn_2024-01-15.md
+
+     💡 Saved as scheduled flow: "daily_churn_report"
+     🕓 Runs daily at 9:00 AM
+```
+
+### 🎯 Cross-Reference Multiple Data Sources
+```
+You: I have:
+     - customer_tickets.csv (50K support tickets)
+     - product_catalog.json (2K products)
+     - usage_logs.parquet (2GB usage data)
+
+     Find me: Products with high churn (>30%) but low usage (<10min/day)
+     from customers who filed >5 tickets in the last 30 days
+
+Executive Assistant: [Uses ADB for joins across large datasets]
+     Importing datasets to Analytics Database...
+     Running complex join query...
+
+     🎯 Found 12 products matching criteria:
+
+        Product           | Churn | Avg Usage | Ticket Count
+        ------------------+-------+-----------+-------------
+        Legacy Widget     | 47%   | 4min/day  | 8.2 avg
+        Enterprise Plan   | 38%   | 7min/day  | 6.1 avg
+        Mobile App Basic  | 34%   | 8min/day  | 5.7 avg
+
+     💡 Pattern: All legacy products with poor UX
+        → Recommendation: Prioritize UX refresh or deprecation
+
+     💾 Full report: chrun_analysis_report.csv
+        Visualization: churn_vs_usage_scatter.png
+```
+
+### 📝 Automate Document Analysis
+```
+You: Read all PDFs in contracts/, extract:
+     - Contract value
+     - Expiration date
+     - Auto-renewal clause
+     Store in TDB for querying
+
+Executive Assistant: [Uses OCR + File tools + TDB]
+     Processing 47 contracts...
+
+     ✅ Extracted and stored:
+        - Total value: $4.2M
+        - 15 expiring in next 90 days
+        - 32 have auto-renewal
+        - 8 require manual renewal (no auto clause)
+
+     💾 Created table: contracts_summary
+        Query: SELECT * FROM contracts_summary WHERE days_to_expire < 90
+```
+
+### 🔄 Data Migration & Transformation
+```
+You: Migrate data from MongoDB export (JSON lines) to PostgreSQL:
+     - Flatten nested structures
+     - Convert timestamps to UTC
+     - Deduplicate by email
+     - Validate phone numbers
+     Report any records that fail validation
+
+Executive Assistant: [Uses Python + TDB tools]
+     Reading export.jsonl (1.2GB, 2.8M records)...
+
+     Migration progress:
+     ✅ Flattened nested documents: 2.8M → 47 fields
+     ✅ Converted timestamps: 2.8M → UTC
+     ✅ Deduplicated: 2.8M → 2.34M unique emails
+     ⚠️ Validation failures: 12,847 records
+
+     Issues found:
+        - Invalid phone: 8,234 (malformed format)
+        - Missing email: 3,112 (required field)
+        - Future DOB: 1,501 (data entry error)
+
+     💾 Valid records in PostgreSQL: users_import table
+        Invalid records saved to: validation_errors.csv
 ```
 
 ## Configuration
@@ -340,6 +496,71 @@ curl http://localhost:8000/health
 
 ## Tool Capabilities
 
+### Analytics Database (ADB) - DuckDB Powerhouse
+**For serious analytics on medium-to-large datasets (100K to 100M+ rows)**
+
+- **Blazing fast**: Columnar storage, vectorized execution, parallel queries
+- **Direct file queries**: Query CSV/Parquet/JSON without importing
+- **Complex analytics**: Window functions, CTEs, nested aggregations
+- **Multi-way joins**: Combine datasets effortlessly
+- **Scalable**: Handles hundreds of MB to GB of data efficiently
+- **Use cases**:
+  - Sales analytics and reporting
+  - Log analysis and aggregation
+  - Time-series data processing
+  - Data science and ML prep work
+  - Business intelligence queries
+
+| Operation | TDB | ADB |
+|-----------|-----|-----|
+| CRUD operations | ✅ Excellent | ⚠️ Limited |
+| Complex queries | ❌ Slow | ✅ Blazing fast |
+| Large joins | ❌ Timeout | ✅ Optimized |
+| 100M+ rows | ❌ Struggles | ✅ Handles well |
+| Frequent updates | ✅ Good | ⚠️ Append-better |
+
+### Transactional Database (TDB) - SQLite Powerhouse
+**For structured data and transactional workloads**
+
+- **Instant startup**: No import needed, works immediately
+- **ACID compliant**: Reliable transactions and rollbacks
+- **SQLite compatible**: Familiar SQL syntax
+- **Thread-scoped**: Each conversation gets isolated database
+- **Import/Export**: CSV, JSON, Parquet support
+- **Use cases**:
+  - Timesheets and task tracking
+  - Configuration storage
+  - Quick data lookups
+  - Temporary working data
+  - Small-to-medium datasets (<100K rows)
+
+### Vector Database (VDB) - Semantic Search
+**For knowledge retrieval and semantic understanding**
+
+- **Meaning-based search**: Find documents by intent, not keywords
+- **Hybrid search**: Combines vector similarity with full-text search
+- **Persistent**: Survives thread resets
+- **Thread-scoped**: Private knowledge per conversation
+- **Use cases**:
+  - Meeting notes and decisions
+  - Documentation lookup
+  - Conversational memory
+  - Knowledge base management
+
+### Python Execution - Custom Logic Engine
+**For calculations, transformations, and automation**
+
+- **Sandboxed**: 30s timeout, path traversal protection
+- **Rich libraries**: pandas, numpy, json, csv, datetime, statistics
+- **File I/O**: Read/write within thread-scoped directories
+- **Data viz**: matplotlib for charts and graphs
+- **Use cases**:
+  - Data transformations
+  - Calculations and simulations
+  - API integrations
+  - File format conversions
+  - Custom business logic
+
 ### MCP Integration (Model Context Protocol)
 Executive Assistant supports extensible tool integration via MCP servers:
 - **User-Managed Servers**: Add your own MCP servers per conversation
@@ -451,12 +672,14 @@ data/
 ├── shared/             # Organization-wide (scope="shared")
 │   ├── files/          # Shared files
 │   ├── tdb/            # Shared transactional database
+│   ├── adb/            # Shared analytics database (DuckDB)
 │   └── vdb/            # Shared vector database
 └── users/              # Thread-scoped (scope="context")
     └── {thread_id}/
         ├── files/      # Private files
         ├── tdb/        # Working transactional database
-        ├── vdb/        # Thread VDB (rarely used)
+        ├── adb/        # Thread analytics database (auto-created)
+        ├── vdb/        # Thread vector database
         └── mem/        # Embedded memories
 ```
 
@@ -515,7 +738,13 @@ executive_assistant/
 
 ## License
 
-MIT License - see LICENSE file for details.
+Apache License 2.0 - see LICENSE file for details.
+
+**Why Apache 2.0?**
+- ✅ Explicit patent grant (protects users from patent litigation)
+- ✅ Patent termination clause (license ends if you sue over patents)
+- ✅ Corporate-friendly (preferred by large companies)
+- ✅ Requires stating changes (better provenance tracking)
 
 ## Contributing
 
