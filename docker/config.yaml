@@ -89,8 +89,8 @@ storage:
   postgres:
     host: localhost
     port: 5432
-    user: executive_assistant
-    db: executive_assistant_db
+    user: ken
+    db: ken_db
     # password should be in .env
 
   # Storage paths (relative to project root)

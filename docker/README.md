@@ -34,7 +34,7 @@ The `deploy.sh` script automatically:
 
 ```bash
 # From project root
-docker build --platform linux/amd64 -f docker/Dockerfile -t executive_assistant:latest .
+docker build --platform linux/amd64 -f docker/Dockerfile -t eddyaturbern/ken:latest .
 ```
 
 ### Start Services
@@ -58,7 +58,7 @@ docker compose -f docker/docker-compose.yml down
 docker compose -f docker/docker-compose.yml logs -f
 
 # Specific service
-docker compose -f docker/docker-compose.yml logs -f executive_assistant
+docker compose -f docker/docker-compose.yml logs -f ken
 docker compose -f docker/docker-compose.yml logs -f postgres
 ```
 
@@ -81,6 +81,13 @@ Key variables:
 ### First-Time Setup
 
 Fix permissions for admin files:
+
+```bash
+sudo chown -R ken:ken ./data/admins
+chmod -R u+rwX ./data/admins
+```
+
+Or use UID:GID:
 
 ```bash
 sudo chown -R 1000:1000 ./data/admins
@@ -113,7 +120,7 @@ bash docker/build.sh
 
 Check logs:
 ```bash
-docker compose -f docker/docker-compose.yml logs executive_assistant
+docker compose -f docker/docker-compose.yml logs ken
 ```
 
 ### Database connection errors
@@ -124,6 +131,13 @@ docker compose -f docker/docker-compose.yml ps postgres
 ```
 
 ### Permission errors on admin files
+
+```bash
+sudo chown -R ken:ken ./data/admins
+chmod -R u+rwX ./data/admins
+```
+
+Or use UID:GID:
 
 ```bash
 sudo chown -R 1000:1000 ./data/admins

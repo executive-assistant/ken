@@ -1,6 +1,6 @@
 services:
-  executive_assistant:
-    image: eddyatmc/executive_assistant:latest
+  ken:
+    image: eddyaturbern/ken:latest
     restart: unless-stopped
     env_file:
       - .env
@@ -9,7 +9,7 @@ services:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
     volumes:
-      - executive_assistant_data:/app/data
+      - ken_data:/app/data
       - ./data/admins:/app/data/admins
     ports:
       - "8000:8000"
@@ -41,4 +41,4 @@ services:
 
 volumes:
   pgdata:
-  executive_assistant_data:
+  ken_data:

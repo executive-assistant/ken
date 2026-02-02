@@ -16,20 +16,20 @@ RUN apt-get update && apt-get install -y \
   && rm -rf /var/lib/apt/lists/*
 
 # Create user first
-RUN useradd -m -u 1000 executive_assistant
+RUN useradd -m -u 1000 ken
 
-# Copy dependency files and install as the executive_assistant user
+# Copy dependency files and install as the ken user
 COPY README.md .python-version pyproject.toml uv.lock ./
-RUN chown -R executive_assistant:executive_assistant /app
-USER executive_assistant
+RUN chown -R ken:ken /app
+USER ken
 RUN uv sync --frozen
 
-# Switch back to root to copy application files, then back to executive_assistant
+# Switch back to root to copy application files, then back to ken
 USER root
 COPY . .
-RUN chown -R executive_assistant:executive_assistant /app
-RUN mkdir -p /app/data /app/logs && chown -R executive_assistant:executive_assistant /app/data /app/logs
-USER executive_assistant
+RUN chown -R ken:ken /app
+RUN mkdir -p /app/data /app/logs && chown -R ken:ken /app/data /app/logs
+USER ken
 
 EXPOSE 8000
 
