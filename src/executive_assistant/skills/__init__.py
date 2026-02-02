@@ -20,15 +20,3 @@ __all__ = [
     "load_skill",
     "get_skill_tool",
 ]
-
-
-# Legacy import (deprecated)
-def get_sqlite_helper_tools():
-    """Deprecated: Use load_skill tool instead.
-
-    This function is kept for backward compatibility.
-    """
-    from warnings import warn
-
-    warn("get_sqlite_helper_tools is deprecated. Use the load_skill tool instead.", DeprecationWarning, stacklevel=2)
-    return []

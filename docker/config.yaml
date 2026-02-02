@@ -10,7 +10,7 @@
 # Agent Configuration
 agent:
   # Agent display name - customize this for your deployment
-  name: "Executive Assistant"
+  name: "Ken"
 
 # Channels Configuration
 channels:

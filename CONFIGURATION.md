@@ -828,4 +828,4 @@ docker compose logs executive_assistant | grep -i error
 
 **Last Updated:** 2025-02-02
 
-**Need help?** Open an issue on [GitHub](https://github.com/mgmtcnsltng/executive_assistant/issues)
+**Need help?** Open an issue on [GitHub](https://github.com/executive-assistant/ken/issues)

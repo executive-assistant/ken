@@ -53,11 +53,11 @@ Use clear, descriptive branch names:
 ```bash
 # Fork the repository on GitHub
 # Clone your fork
-git clone https://github.com/YOUR_USERNAME/executive_assistant.git
+git clone https://github.com/YOUR_USERNAME/ken.git
 cd executive_assistant
 
 # Add upstream remote
-git remote add upstream https://github.com/mgmtcnsltng/executive_assistant.git
+git remote add upstream https://github.com/executive-assistant/ken.git
 ```
 
 ### 2. Create Feature Branch

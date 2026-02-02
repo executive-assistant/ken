@@ -362,15 +362,3 @@ def close_all_connections():
     _get_sqlite_connection.cache_clear()
 
 
-# ============================================================================
-# Backward Compatibility Functions
-# ============================================================================
-
-def get_db_connection(storage_id: str | None = None) -> sqlite3.Connection:
-    """
-    Get raw SQLite connection (for backward compatibility).
-
-    Deprecated: Use get_sqlite_db() instead.
-    """
-    db = get_sqlite_db(storage_id)
-    return db.conn

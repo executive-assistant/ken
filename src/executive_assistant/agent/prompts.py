@@ -183,7 +183,17 @@ def load_emotional_context() -> str:
         return tracker.get_state_for_prompt()
     except Exception:
         # If emotional tracking fails, return empty (don't break the agent)
-        return ""        User prompt content if file exists, empty string otherwise.
+        return ""
+
+
+def load_user_prompt(thread_id: str) -> str:
+    """Load user prompt content (thread-specific, optional).
+
+    Args:
+        thread_id: Thread identifier
+
+    Returns:
+        User prompt content if file exists, empty string otherwise.
     """
     prompt_path = UserPaths.get_prompt_path(thread_id)
     if not prompt_path.exists():

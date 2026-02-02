@@ -147,4 +147,4 @@ If you have questions about branch policies or need an exception, open an issue 
 ---
 
 **Last Updated:** 2026-01-30
-**Maintainer:** @mgmtcnsltng
+**Maintainer:** @executive-assistant
