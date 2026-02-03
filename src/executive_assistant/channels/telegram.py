@@ -1346,13 +1346,12 @@ class TelegramChannel(BaseChannel):
                     message.content += (
                         "\n\n[SYSTEM: New user detected (empty data folder). "
                         "Follow this onboarding flow: "
-                        "1. Welcome briefly (1 sentence). "
-                        "2. Ask: 'What do you do?' and 'What would you like help with?' "
-                        "3. Learn about them naturally - extract and store key info (name, role, goals) as memories using create_memory(). "
-                        "4. Based on their role, suggest 2-3 specific things you can CREATE for them (database, automation, workflow). "
-                        "5. Ask 'Should I set this up for you?' - if yes, create it immediately. "
-                        "Be brief and conversational - this is a chat, not a form. "
-                        "Remember: They can see this system note, so keep it professional.]"
+                        "1. Welcome warmly in 1-2 sentences: 'Hi! I'm [agent_name], your AI assistant. To help you better, tell me a bit about yourself.' "
+                        "2. Ask 2 quick questions: 'What do you do?' and 'What would you like help with?' "
+                        "3. Extract and store key info (name, role, goals) as memories using create_memory(). "
+                        "4. Suggest 2-3 specific things you can CREATE based on their role (database, automation, workflow). "
+                        "5. Ask 'Should I set this up for you?' - if yes, create it immediately, then call mark_onboarding_complete(thread_id). "
+                        "Keep it BRIEF and conversational. Focus on learning about them, not explaining capabilities.]"
                     )
             except Exception as e:
                 logger.warning(f"{ctx} Onboarding check failed: {e}")
