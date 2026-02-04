@@ -579,7 +579,7 @@ async def _load_mcp_servers(
     servers: dict,
     source: str,
 ) -> list[BaseTool]:
-    """Load tools from MCP servers.
+    """Load tools from MCP servers with client caching.
 
     Args:
         servers: Dict of server_name -> server_config
@@ -589,6 +589,10 @@ async def _load_mcp_servers(
         List of MCP tools
     """
     from langchain_mcp_adapters.client import MultiServerMCPClient
+    import hashlib
+    import json
+
+    global _mcp_client_cache
 
     tools = []
     connections = {}
@@ -601,7 +605,18 @@ async def _load_mcp_servers(
             print(f"Warning: Invalid MCP server config for '{server_name}' ({source}): {e}")
 
     if connections:
-        client = MultiServerMCPClient(connections=connections)
+        # Create cache key from server configurations
+        cache_key = f"{source}:{hashlib.sha256(json.dumps(connections, sort_keys=True).encode()).hexdigest()[:16]}"
+
+        # Check cache first
+        if cache_key not in _mcp_client_cache:
+            logger.debug(f"Creating new MCP client for {source} (cache miss: {cache_key})")
+            client = MultiServerMCPClient(connections=connections)
+            _mcp_client_cache[cache_key] = client
+        else:
+            logger.debug(f"Reusing cached MCP client for {source} (cache hit: {cache_key})")
+            client = _mcp_client_cache[cache_key]
+
         server_tools = await client.get_tools()
         tools.extend(server_tools)
 
