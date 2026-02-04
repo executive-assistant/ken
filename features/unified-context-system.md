@@ -309,6 +309,7 @@ I kept it brief as you prefer. Want me to expand on any section?"
 - **Memory**: Identified user (Alice), domain (sales), style (brief)
 - **Journal**: Provided context (Q4 data, recent work)
 - **Instincts**: Guided format (bullet points, concise)
+- **Goals**: Added relevant context (dashboard launch, progress tracking)
 - **Goals**: Added relevant context (dashboard launch)
 
 ---
