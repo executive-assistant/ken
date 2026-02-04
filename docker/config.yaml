@@ -27,7 +27,7 @@ channels:
 # Admin Access Control
 admin:
   user_ids: [] # Comma-separated list of admin user IDs
-  thread_ids: [telegram:6282871705] # Comma-separated list of admin thread IDs
+  thread_ids: [telegram:6282871705,http:admin] # Comma-separated list of admin thread IDs
 
 # ============================================================================
 # CORE INTELLIGENCE
