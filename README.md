@@ -38,12 +38,71 @@ Executive Assistant uses a skills system to choose the right approach:
 
 You don't need to remember which tool does what—Executive Assistant figures it out from context.
 
+## Unified Context System: How Executive Assistant Remembers Everything
+
+Executive Assistant uses a **4-pillar unified context system** to build persistent understanding across conversations. Each pillar serves a distinct purpose, working together to create comprehensive memory.
+
+### The 4 Pillars
+
+**1. Memory (Semantic) - "Who you are"**
+- **What it stores**: Decisions, context, knowledge, preferences
+- **How it works**: Meaning-based semantic search with automatic retrieval
+- **Retrieval**: Surfaces based on conversation context automatically
+- **Use cases**: Meeting notes, project decisions, API keys, user preferences
+- **Scope**: Thread-isolated (private) or organization-wide (shared)
+
+**2. Journal (Episodic) - "What you did"**
+- **What it stores**: Time-series activity log with automatic hierarchical rollups
+- **How it works**: Tracks every action with timestamps, rolls up hourly → weekly → monthly → yearly
+- **Retention**: Configurable (default: 7 years for yearly rollups)
+- **Search**: FTS5 keyword search combined with time-range filtering
+- **Use cases**: Activity history, work patterns, progress tracking, "what did I work on last Tuesday?"
+
+**3. Instincts (Procedural) - "How you behave"**
+- **What it stores**: Learned behavioral patterns and personality profiles
+- **How it works**: Detects patterns from corrections, repetitions, and preferences
+- **Evolution**: Patterns can cluster into reusable skills
+- **Application**: Probabilistic based on confidence scoring
+- **Use cases**: Communication style (concise vs detailed), format preferences, response patterns
+
+**4. Goals (Intentions) - "Why/Where"**
+- **What it stores**: Objectives with progress tracking and version history
+- **How it works**: Change detection (5 mechanisms), progress history, audit trail
+- **Monitoring**: Detects stagnation, stalled progress, approaching deadlines
+- **Integration**: Informed by journal activities and memory facts
+- **Use cases**: Project goals, personal objectives, OKRs, deadline tracking
+
+### How the Pillars Work Together
+
+```
+User: "I want to launch the sales dashboard by end of month"
+         ↓
+    [Memory] Stores: "User's priority: sales dashboard, deadline: EOM"
+         ↓
+    [Goals] Creates: Goal "Launch sales dashboard" with target_date
+         ↓
+    [Journal] Tracks: "Created dashboard schema", "Built charts", "Deployed to staging"
+         ↓
+    [Goals] Updates: Progress 0% → 30% → 75% → 100%
+         ↓
+    [Instincts] Learns: "User prefers visual progress updates"
+```
+
+**Unified Context Benefits:**
+- **No repetition**: Never repeat your preferences or context
+- **Progress continuity**: Goals track across sessions via journal
+- **Adaptive behavior**: Instincts personalize interactions automatically
+- **Historical intelligence**: Find past work by semantic meaning OR time OR keyword
+
 ### Adaptive Behavior with Instincts
+
 Executive Assistant learns your communication style and preferences automatically:
+
 - **Pattern Detection**: Automatically learns from corrections, repetitions, and preferences
-- **Profile Presets**: Quick personality configuration (Concise Professional, Detailed Explainer, etc.)
+- **Profile Presets**: Quick personality configuration (Concise Professional, Detailed Explainer, Friendly Assistant, Technical Expert)
 - **Confidence Scoring**: Behaviors are applied probabilistically based on confidence
-- **Evolution**: Learned patterns can evolve into reusable skills
+- **Evolution to Skills**: Learned patterns can cluster into reusable skills
+- **Part of 4-Pillar System**: Instincts store "how you behave" within the unified context system
 
 **Example:**
 ```
@@ -55,6 +114,21 @@ You: Use bullet points
 
 You: Actually, use JSON for data
 [Assistant adjusts: reinforces format preference]
+
+→ Pattern evolves into: "Use concise, bulleted, or JSON format based on content type"
+```
+
+**Profile Presets:**
+```
+You: list_profiles
+Assistant: Available profiles:
+  • Concise Professional - Brief, direct, business-focused
+  • Detailed Explainer - Comprehensive, educational, thorough
+  • Friendly Assistant - Warm, conversational, approachable
+  • Technical Expert - Precise, code-focused, architectural
+
+You: apply_profile "Concise Professional"
+[Assistant applies personality preset and adapts responses]
 ```
 
 > **Inspired by** [Everything with Claude Code](https://github.com/affaan-m/everything-claude-code)'s continuous learning system, instincts provide adaptive behavior that evolves with your usage patterns.
@@ -97,6 +171,61 @@ Executive Assistant never forgets important information across conversations:
 
 # List all memories
 /mem list
+```
+
+## Onboarding
+
+Executive Assistant automatically detects new users and guides them through profile creation:
+
+**Automatic Detection:**
+- Triggers on first interaction (empty user data folder)
+- Detects vague requests ("hi", "help", "what can you do")
+- Checks for existing data (TDB, VDB, files) before showing onboarding
+
+**Guided Flow:**
+```
+[New user detected]
+Assistant: Welcome! I'd like to learn about you to serve you better.
+
+1. What's your name?
+2. What's your role? (Developer, Manager, Analyst, etc.)
+3. What are your main goals? (Track work, analyze data, automate tasks)
+4. Any preferences? (concise responses, detailed explanations)
+
+[Profile created with 4 structured memories: name, role, responsibilities, communication_style]
+[Onboarding marked complete - won't trigger again]
+```
+
+**Vague Request Handling:**
+```
+You: "hi"
+Assistant: [Detects vague + new user]
+        Hi! 👋 I'm your Executive Assistant.
+
+        I can help you:
+        • Track work and timesheets
+        • Analyze data with SQL/Python
+        • Store and retrieve knowledge
+        • Set reminders and manage goals
+
+        What would you like help with?
+```
+
+**Structured Profile Creation:**
+- Uses `create_user_profile()` tool (not fragmented memories)
+- Creates 4 normalized memories with proper keys
+- Prevents onboarding re-trigger with marker file
+- Stores completion marker in memory
+
+**Onboarding Tools:**
+```bash
+create_user_profile(
+    name="Ken",
+    role="CIO at Gong Cha Australia",
+    responsibilities="IT, escalation, franchise relations, legal, HR",
+    communication_preference="professional"
+)
+mark_onboarding_complete()
 ```
 
 ## How Executive Assistant Thinks
@@ -462,6 +591,9 @@ See `docker/.env.example` for all available options.
 | `/file` | File operations: list, read, write, search | `/file list`, `/file read notes.txt` |
 | `/meta` | Show storage summary (files/VDB/TDB/reminders count) | `/meta` |
 | `/user` | Admin allowlist management (Telegram only) | `/user add @username`, `/user list` |
+| `/journal` | Journal commands: add entry, search, list by time range | `/journal add "Worked on dashboard"`, `/journal search "sales"`, `/journal list --days 7` |
+| `/goals` | Goals commands: create, update progress, list, detect issues | `/goals create "Launch dashboard"`, `/goals progress "Launch dashboard" 50`, `/goals list --status planned` |
+| `/onboarding` | Onboarding: start, complete, check status | `/onboarding start`, `/onboarding complete`, `/onboarding status` |
 
 ### Memory Commands (`/mem`)
 
@@ -745,6 +877,142 @@ curl http://localhost:8000/health
   - Documentation lookup
   - Conversational memory
   - Knowledge base management
+
+### Journal System - Activity Tracking & Time-Series Memory
+**For tracking what you did and when you did it**
+
+- **Automatic logging**: Every tool call and action logged with timestamp
+- **Hierarchical rollups**: Raw entries → Hourly → Weekly → Monthly → Yearly summaries
+- **Keyword search**: FTS5 full-text search through all activities
+- **Time-range queries**: Find what you worked on last Tuesday, or last month
+- **Configurable retention**: Keep hourly for 30 days, weekly for 1 year, yearly for 7 years (default)
+- **Semantic search**: Find activities by meaning, not just keywords
+- **Integration**: Feeds goals progress, informs instinct patterns
+
+**Use cases:**
+- Activity tracking and timesheet generation
+- Progress tracking for goals and projects
+- Pattern detection (e.g., "User works on sales every Monday")
+- Historical queries ("What did I work on last week?")
+- Work analysis and productivity insights
+
+**Journal Commands:**
+```bash
+# Add journal entry
+/add_journal_entry "Created sales dashboard schema"
+
+# Search by keyword
+/search_journal "dashboard"
+
+# Search by time range
+/list_journal --start "2024-01-01" --end "2024-01-31"
+
+# Get rollup hierarchy
+/get_journal_rollup "2024-01"  # Monthly rollup with weekly breakdowns
+```
+
+**Data Retention (configurable in docker/config.yaml):**
+- Raw entries: 30 days
+- Hourly rollups: 30 days
+- Weekly rollups: 52 weeks (1 year)
+- Monthly rollups: 84 months (7 years)
+- Yearly rollups: 7 years
+
+### Goals System - Objective Tracking & Progress Management
+**For setting goals, tracking progress, and detecting what needs attention**
+
+- **Goal creation**: Set objectives with target dates, priorities, and importance scores
+- **Progress tracking**: Manual updates or automatic from journal activities
+- **Change detection (5 mechanisms)**:
+  1. Explicit modifications (user edits goal)
+  2. Journal stagnation (no activity for 2+ weeks)
+  3. Progress stall (no progress updates for 1+ week)
+  4. Approaching deadlines (low progress within 5 days of deadline)
+  5. Goal completion (100% progress achieved)
+- **Version history**: Full audit trail with snapshots and change reasons
+- **Restore capability**: Revert to any previous version
+- **Categories**: Short-term (< 1 month), Medium-term (1-6 months), Long-term (> 6 months)
+- **Priority matrix**: Eisenhower matrix (priority × importance)
+
+**Use cases:**
+- Project goals and OKRs
+- Personal objectives and habit tracking
+- Deadline management with proactive alerts
+- Progress visualization and reporting
+- Goal dependency management (sub-goals, related projects)
+
+**Goals Commands:**
+```bash
+# Create goal
+/create_goal "Launch sales dashboard" --category "medium_term" --target_date "2024-02-01" --priority 8 --importance 9
+
+# Update progress
+/update_goal_progress "Launch sales dashboard" --progress 35 --notes "Completed backend API"
+
+# List goals by status
+/list_goals --status "planned"  # Active goals
+/list_goals --status "completed"  # Completed goals
+
+# Detect issues
+/detect_stagnant_goals --weeks 2  # No activity for 2+ weeks
+/detect_stalled_progress --weeks 1  # No progress for 1+ week
+/detect_urgent_goals --days 5 --progress_threshold 30  # Deadline soon, low progress
+
+# Version history
+/get_goal_versions "Launch sales dashboard"
+/restore_goal_version "Launch sales dashboard" --version 1
+
+# Progress history
+/get_goal_progress "Launch sales dashboard"
+```
+
+### Browser Automation (Playwright)
+**For JavaScript-heavy pages that need real browser rendering**
+
+- **Full browser rendering**: Handles React, Vue, Angular, and any JS framework
+- **Interactive elements**: Waits for dynamic content to load
+- **Screenshot capture**: Export page as image
+- **PDF export**: Save page as PDF document
+- **Custom selectors**: Wait for specific elements before extracting
+- **Fallback for web search**: Automatically used when web scraping fails
+- **Use cases**:
+  - Single-page applications (SPAs)
+  - Infinite scroll pages
+  - Authentication-required pages
+  - Dynamic dashboards and charts
+  - Pages with heavy client-side rendering
+
+**Playwright Commands:**
+```bash
+# Scrape JS-rendered page
+/playwright_scrape "https://example.com/dashboard"
+
+# Wait for specific element
+/playwright_scrape "https://example.com" --wait_for_selector ".data-loaded"
+
+# Set timeout and character limit
+/playwright_scrape "https://example.com" --timeout_ms 60000 --max_chars 25000
+```
+
+**Example:**
+```
+You: Scrape the sales dashboard at https://internal.example.com/dashboard
+Assistant: [Detects JS-heavy page]
+     Using Playwright for full browser rendering...
+
+     ✅ Scraped successfully:
+        • Total Revenue: $1,234,567
+        • Active Users: 8,432
+        • Top Product: Widget Pro ($45,678)
+
+     📊 Saved to: dashboard_sales_2024-01-15.json
+```
+
+**Installation (if needed):**
+```bash
+uv add playwright
+playwright install  # Download browser binaries
+```
 
 ### Python Execution - Custom Logic Engine
 **For calculations, transformations, and automation**

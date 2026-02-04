@@ -1,10 +1,36 @@
 # Executive Assistant Technical Architecture Documentation
 
-**Version:** 1.3.0
-**Last Updated:** February 1, 2026
+**Version:** 1.4.0
+**Last Updated:** February 4, 2026
 **Project:** Executive Assistant - Multi-channel AI Agent Platform
 
 **Recent Updates (February 2026):**
+- ✅ **Implemented Unified Context System** - 4-Pillar architecture for comprehensive user context
+  - **Memory Pillar**: Embedded memories with FTS5 full-text search (SQLite)
+  - **Journal Pillar**: Time-series reflection logs with automatic rollups (SQLite + FTS5)
+  - **Instincts Pillar**: Behavioral pattern learning with confidence scoring (JSONL + snapshot)
+  - **Goals Pillar**: Long-term objectives with progress tracking (SQLite with version history)
+  - Unified query interface across all pillars
+  - Integrated into system prompts for enhanced context awareness
+- ✅ **Implemented Journal System** - Time-series reflection with intelligent rollups
+  - Daily journal entries with rich text formatting
+  - Automatic time-series rollups (hourly → daily → weekly → monthly)
+  - Full-text search across all journal entries
+  - Context-aware retrieval for relevant historical reflections
+  - Storage: `data/users/{thread_id}/journal/journal.db` (SQLite with FTS5)
+- ✅ **Implemented Goals System** - Long-term objective tracking
+  - Create, update, track, and complete goals
+  - Progress tracking with percentage completion
+  - Automatic version history for all goal changes
+  - Deadline management with reminders
+  - Status workflow: draft → active → completed → cancelled
+  - Storage: `data/users/{thread_id}/goals/goals.db` (SQLite with versioning)
+- ✅ **Implemented Onboarding System** - Structured profile creation
+  - Guided profile setup with 5 key sections
+  - Extracts user context (name, role, preferences, communication style, goals)
+  - Automatic memory creation from onboarding responses
+  - One-time setup per user thread
+  - Context injection into system prompts
 - ✅ **Implemented User MCP Management** - Per-conversation MCP server management
   - User-managed MCP servers (stdio + HTTP/SSE)
   - Tiered tool loading (user > admin priority)
@@ -96,6 +122,9 @@ Executive Assistant is a **multi-channel AI agent platform** built on LangGraph 
 | **Vector Database** | LanceDB | Semantic search/knowledge base |
 | **Tabular Data** | SQLite (sqlite_db_storage.py, tdb_tools.py) | Transactional, permanent data (timesheets, CRM, tasks) |
 | **Memories** | SQLite + FTS5 (mem_storage.py) | Embedded memories with full-text search |
+| **Journal** | SQLite + FTS5 (journal_storage.py) | Time-series reflection logs with rollups |
+| **Goals** | SQLite with versioning (goals_storage.py) | Long-term objectives with progress tracking |
+| **Instincts** | JSONL + snapshot (instinct_storage.py) | Behavioral patterns with confidence scoring |
 | **File Storage** | Local filesystem | Document/file storage |
 | **Metadata Registry** | PostgreSQL | File/DB ownership tracking |
 
@@ -232,8 +261,10 @@ executive_assistant/
 │   │   ├── reminder.py          # Reminder scheduling
 │   │   ├── scheduled_flows.py    # APScheduler integration
 │   │   ├── chunking.py         # Document chunking for vector database
-│   │   ├── mem_storage.py      # Embedded memory storage
-│   │   ├── instinct_storage.py # Instinct behavioral patterns (JSONL + snapshot)
+│   │   ├── mem_storage.py      # Memory pillar storage (SQLite + FTS5)
+│   │   ├── journal_storage.py  # Journal pillar storage (SQLite + FTS5)
+│   │   ├── goals_storage.py    # Goals pillar storage (SQLite + versioning)
+│   │   ├── instinct_storage.py # Instincts pillar storage (JSONL + snapshot)
 │   │   └── workers.py          # Async worker pool
 │   │
 │   ├── tools/                    # LangChain tool implementations
@@ -243,9 +274,14 @@ executive_assistant/
 │   │   ├── reminder_tools.py   # Reminder CRUD operations
 │   │   ├── search_tool.py      # Web search (SearXNG)
 │   │   ├── ocr_tool.py        # OCR image/PDF text extraction
+│   │   ├── mem_tools.py       # Memory pillar tools (6 tools)
+│   │   ├── journal_tools.py   # Journal pillar tools (8 tools)
+│   │   ├── goals_tools.py     # Goals pillar tools (10 tools)
+│   │   ├── onboarding_tools.py # Onboarding tools (5 tools)
+│   │   ├── context_query_tool.py # Unified 4-pillar context query
 │   │   ├── firecrawl_tool.py   # Firecrawl web scraping
-│   │   ├── mem_tools.py       # Memory extraction tools
 │   │   ├── meta_tools.py      # System metadata queries
+│   │   ├── mcp_skill_mapping.py # MCP server to skill mapping
 │   │   └── confirmation_tool.py # Large operation confirmation
 │   │
 │   ├── skills/                   # Dynamic skill loading system
@@ -255,11 +291,15 @@ executive_assistant/
 │   │   ├── tool.py             # Skill tool wrapper
 │   │   └── content/            # Skill definitions directory
 │   │
-│   ├── instincts/                # Behavioral pattern learning system
+│   ├── instincts/                # Instincts pillar - behavioral pattern learning
 │   │   ├── observer.py         # Pattern detection from interactions
 │   │   ├── injector.py         # Context injection into system prompts
 │   │   ├── evolver.py          # Clustering instincts into skills
 │   │   └── profiles.py         # Pre-built personality presets
+│   │
+│   ├── onboarding/               # User onboarding system
+│   │   ├── onboarding.py       # Guided profile creation
+│   │   └── profiles.py         # Onboarding flow definitions
 │   │
 │   ├── config/                   # Configuration management
 │   │   ├── settings.py         # Pydantic Settings class
@@ -283,6 +323,9 @@ executive_assistant/
 │   ├── test_status_middleware.py # Middleware tests
 │   ├── test_scheduled_flows.py   # Scheduler tests
 │   ├── test_temporal_api.py     # Temporal integration tests
+│   ├── test_journal_storage.py  # Journal pillar tests
+│   ├── test_goals_storage.py    # Goals pillar tests
+│   ├── test_onboarding.py       # Onboarding system tests
 │   └── conftest.py             # Pytest fixtures
 │
 ├── docker/migrations/            # PostgreSQL schema migrations
@@ -303,7 +346,10 @@ executive_assistant/
 │           ├── files/
 │           ├── tdb/
 │           ├── vdb/
-│           └── mem/
+│           ├── mem/              # Memory pillar
+│           ├── journal/          # Journal pillar
+│           ├── goals/            # Goals pillar
+│           └── instincts/        # Instincts pillar
 │
 ├── pyproject.toml                # Project dependencies & scripts
 ├── docker/config.yaml                   # Default configuration
@@ -424,8 +470,12 @@ data/
         ├── files/
         ├── tdb/
         ├── vdb/
-        ├── mem/
-        └── instincts/    # Learned behavioral patterns
+        ├── mem/              # Memory pillar - embedded memories
+        ├── journal/          # Journal pillar - time-series reflections
+        │   └── journal.db    # SQLite with FTS5
+        ├── goals/            # Goals pillar - long-term objectives
+        │   └── goals.db      # SQLite with versioning
+        └── instincts/        # Instincts pillar - behavioral patterns
             ├── instincts.jsonl
             └── instincts.snapshot.json
 ```
@@ -498,6 +548,89 @@ data/
   - `evolve_instincts`: Cluster patterns into draft skills
   - `approve_evolved_skill`: Save draft as user skill
   - `export_instincts` / `import_instincts`: Backup and sharing
+
+**JournalStorage (`journal_storage.py`)**
+- **Purpose**: Time-series reflection logs with intelligent rollups
+- **Backend**: SQLite with FTS5 full-text search
+- **Location**: `data/users/{thread_id}/journal/journal.db`
+- **Schema**:
+  - `entries`: id, timestamp, entry_text, tags, metadata
+  - `rollups`: id, period_start, period_end, rollup_type, summary, entry_count
+  - `entries_fts`: Full-text search virtual table
+- **Features**:
+  - Daily journal entries with rich text formatting
+  - Automatic time-series rollups:
+    - Hourly → Daily (8:00 AM)
+    - Daily → Weekly (Monday 8:00 AM)
+    - Weekly → Monthly (1st of month 8:00 AM)
+  - Full-text search across all entries (ranked by relevance)
+  - Context-aware retrieval based on query intent
+  - Thread-scoped storage
+- **Tools**:
+  - `journal_add`: Create new journal entry
+  - `journal_search`: Search entries by keyword/semantic meaning
+  - `journal_get_recent`: Get recent entries (configurable limit)
+  - `journal_get_by_date`: Get entries for specific date range
+  - `journal_get_rollups`: Get rolled-up summaries
+  - `journal_list_tags`: List all used tags
+  - `journal_update`: Update existing entry
+  - `journal_delete`: Remove entry
+- **Integration**: Injected into system prompts via "## Recent Reflections" section
+
+**GoalsStorage (`goals_storage.py`)**
+- **Purpose**: Long-term objective tracking with progress monitoring
+- **Backend**: SQLite with version history
+- **Location**: `data/users/{thread_id}/goals/goals.db`
+- **Schema**:
+  - `goals`: id, title, description, status, deadline, progress, created_at, updated_at
+  - `goal_history`: id, goal_id, changed_at, changed_field, old_value, new_value, change_reason
+  - `goals_fts`: Full-text search virtual table
+- **Features**:
+  - Goal lifecycle: draft → active → completed → cancelled
+  - Progress tracking (0-100%)
+  - Deadline management with overdue detection
+  - Automatic version history for all changes
+  - Priority levels (low, medium, high, critical)
+  - Full-text search across goals
+  - Thread-scoped storage
+- **Tools**:
+  - `goal_create`: Create new goal
+  - `goal_update`: Update goal (title, description, status, progress, deadline, priority)
+  - `goal_delete`: Delete goal (archives history)
+  - `goal_list`: List all goals (filterable by status/priority)
+  - `goal_get`: Get goal details with history
+  - `goal_search`: Search goals by keyword
+  - `goal_set_progress`: Update progress percentage
+  - `goal_complete`: Mark goal as completed
+  - `goal_cancel`: Cancel goal
+  - `goal_get_overdue`: List overdue goals
+- **Integration**: Injected into system prompts via "## Active Goals" section
+
+**OnboardingSystem (`onboarding.py`)**
+- **Purpose**: Structured profile creation for new users
+- **Backend**: Uses MemoryStorage to persist profile data
+- **Features**:
+  - Guided 5-section onboarding flow:
+    1. Basic Info (name, role, timezone)
+    2. Communication Style (verbosity, format preferences)
+    3. Work Preferences (productivity patterns, focus hours)
+    4. Goals & Objectives (short-term and long-term)
+    5. Additional Context (anything else relevant)
+  - Automatic memory creation from responses
+  - One-time setup per thread (stored in checkpoint)
+  - Context injection into system prompts
+  - Optional skip for experienced users
+- **Tools**:
+  - `start_onboarding`: Begin onboarding flow
+  - `onboarding_save_section`: Save individual section responses
+  - `onboarding_complete`: Finalize and create memories
+  - `onboarding_skip`: Skip onboarding
+  - `onboarding_status`: Check if onboarding completed
+- **Integration**:
+  - Checks onboarding status at conversation start
+  - If not completed, prompts user to begin
+  - Completed onboarding creates 5-10 embedded memories
+  - Profile data used to personalize system prompts
 
 **UserMCPStorage (`user_mcp_storage.py`)**
 - **Purpose**: Per-conversation MCP server configuration management
@@ -621,9 +754,9 @@ data/
 **Purpose:** LangChain tool implementations that the agent can invoke.
 
 **Tool Registry (`registry.py`)**
-- `get_all_tools()`: Aggregates all tool categories (87 total tools)
+- `get_all_tools()`: Aggregates all tool categories (131 total tools)
 - **All tools available by default** - No progressive disclosure filtering
-  - Token overhead: ~8,100 tokens (4% of 200K context)
+  - Token overhead: ~10,500 tokens (5% of 200K context)
   - Prevents multi-step workflow breakage
   - Removed: `get_tools_for_request()` (deprecated, caused tool loss mid-conversation)
 - Categories:
@@ -641,6 +774,9 @@ data/
   - Agent tools (6 tools): Mini-agent creation and management
   - Flow tools (5 tools): Workflow automation
   - Memory tools (6 tools): Memory extraction and search
+  - Journal tools (8 tools): Time-series reflection with rollups
+  - Goals tools (10 tools): Long-term objective tracking
+  - Onboarding tools (5 tools): Structured profile creation
   - Meta tools (3 tools): System metadata
   - Instinct tools (13 tools): Behavioral pattern learning
   - MCP tools (14 tools): Configurable MCP server integration
@@ -650,6 +786,7 @@ data/
     - HITL workflow: list pending skills, approve, reject, edit, show skills
   - Confirmation tool (1 tool): Large operation confirmation
   - Skills tool (1 tool): Dynamic skill loading
+  - Context tool (1 tool): Unified 4-pillar context query
 
 **Python Tool (`python_tool.py`)**
 - **Purpose**: Safe Python code execution for data processing
@@ -1020,9 +1157,88 @@ When users add MCP servers, the system automatically proposes relevant skills:
 - Admins can write to `data/shared/`
 - All users can read from shared storage
 - Use cases: Company-wide knowledge, templates
- 
+
 Thread-only context
 - Enables multi-thread access to user data
+
+### Unified Context System (4-Pillar Architecture)
+
+The agent maintains comprehensive user context through four integrated pillars:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    UNIFIED CONTEXT SYSTEM                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌─────┐│
+│  │   MEMORY     │  │   JOURNAL    │  │  INSTINCTS   │  │GOALS││
+│  │   Pillar     │  │   Pillar     │  │   Pillar     │  │Pillar││
+│  └──────────────┘  └──────────────┘  └──────────────┘  └─────┘│
+│         │                 │                 │              │    │
+│         ▼                 ▼                 ▼              ▼    │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │         Unified Query Interface (context_router)        │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│         │                                                       │
+│         ▼                                                       │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │    Context Injection into System Prompts                │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Pillar 1: Memory (MemStorage)**
+- **Storage**: SQLite + FTS5 at `data/users/{thread_id}/mem/memories.db`
+- **Purpose**: Long-term fact retention (names, preferences, decisions)
+- **Retrieval**: Full-text search with relevance ranking
+- **Tools**: 6 tools (extract_memory, search_memories, list_memories, update_memory, delete_memory, get_relevant_context)
+
+**Pillar 2: Journal (JournalStorage)**
+- **Storage**: SQLite + FTS5 at `data/users/{thread_id}/journal/journal.db`
+- **Purpose**: Time-series reflections with automatic rollups
+- **Retrieval**: Temporal queries (recent, date range) + semantic search
+- **Rollups**: Hourly → Daily → Weekly → Monthly
+- **Tools**: 8 tools (add, search, get_recent, get_by_date, get_rollups, list_tags, update, delete)
+
+**Pillar 3: Instincts (InstinctStorage)**
+- **Storage**: JSONL + snapshot at `data/users/{thread_id}/instincts/`
+- **Purpose**: Behavioral pattern learning with confidence scoring
+- **Domains**: 6 categories (communication, format, workflow, tool_selection, verification, timing)
+- **Retrieval**: Context-aware filtering + confidence thresholds
+- **Tools**: 13 tools (create, list, adjust_confidence, get_applicable, enable/disable, evolve, approve_evolved, export/import)
+
+**Pillar 4: Goals (GoalsStorage)**
+- **Storage**: SQLite with versioning at `data/users/{thread_id}/goals/goals.db`
+- **Purpose**: Long-term objectives with progress tracking
+- **Status Workflow**: draft → active → completed → cancelled
+- **Retrieval**: Status filtering, priority sorting, overdue detection
+- **Tools**: 10 tools (create, update, delete, list, get, search, set_progress, complete, cancel, get_overdue)
+
+**Integration Flow:**
+1. **Message Received** → Query all 4 pillars in parallel
+2. **Context Assembly** → Combine results with relevance scoring
+3. **Prompt Injection** → Insert into system prompt as structured sections:
+   - "## Relevant Memories"
+   - "## Recent Reflections" (Journal)
+   - "## Behavioral Patterns" (Instincts)
+   - "## Active Goals"
+4. **Agent Reasoning** → LLM uses unified context for decisions
+5. **Context Update** → New information automatically stored in appropriate pillars
+
+**Storage Locations Summary:**
+```
+data/users/{thread_id}/
+├── mem/              # Memory Pillar
+│   └── memories.db   # SQLite + FTS5
+├── journal/          # Journal Pillar
+│   └── journal.db    # SQLite + FTS5
+├── instincts/        # Instincts Pillar
+│   ├── instincts.jsonl
+│   └── instincts.snapshot.json
+└── goals/            # Goals Pillar
+    └── goals.db      # SQLite with versioning
+```
 
 ### Vector Database Architecture
 
@@ -1479,10 +1695,106 @@ This enables:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.4.0 | 2026-02-04 | Implemented Unified Context System (4 Pillars): Memory, Journal, Instincts, Goals; Added Onboarding System |
 | 1.3.0 | 2026-02-01 | Implemented User MCP Management and MCP-Skill HITL Integration |
 | 1.2.0 | 2026-01-31 | Implemented Instinct System (Observer, Injector, Evolver, Profiles) |
 | 1.1.0 | 2026-01-28 | Added ThreadContextMiddleware, HTTP auth bypass, error logging enhancements |
 | 1.0.0 | 2026-01-21 | Initial technical architecture documentation |
+
+### Key Changes in v1.4.0
+
+**New Feature: Unified Context System (4-Pillar Architecture)**
+- **Memory Pillar**: Long-term fact retention with FTS5 full-text search
+  - Storage: SQLite at `data/users/{thread_id}/mem/memories.db`
+  - 6 tools: extract_memory, search_memories, list_memories, update_memory, delete_memory, get_relevant_context
+  - Retrieval: Full-text search with relevance ranking
+- **Journal Pillar**: Time-series reflections with intelligent rollups
+  - Storage: SQLite at `data/users/{thread_id}/journal/journal.db`
+  - 8 tools: add, search, get_recent, get_by_date, get_rollups, list_tags, update, delete
+  - Rollups: Hourly → Daily → Weekly → Monthly
+  - Full-text search across all entries
+- **Instincts Pillar**: Behavioral pattern learning (existing system, now integrated)
+  - Storage: JSONL + snapshot at `data/users/{thread_id}/instincts/`
+  - 13 tools: create, list, adjust_confidence, get_applicable, enable/disable, evolve, approve_evolved, export/import
+  - 6 domains: communication, format, workflow, tool_selection, verification, timing
+- **Goals Pillar**: Long-term objective tracking with progress monitoring
+  - Storage: SQLite at `data/users/{thread_id}/goals/goals.db`
+  - 10 tools: create, update, delete, list, get, search, set_progress, complete, cancel, get_overdue
+  - Status workflow: draft → active → completed → cancelled
+  - Version history for all changes
+- **Unified Query Interface**: Single entry point for querying all pillars
+- **Context Injection**: All pillars injected into system prompts as structured sections
+- **Integration Flow**: Parallel query → relevance scoring → prompt injection → agent reasoning
+
+**New Feature: Journal System**
+- Daily journal entries with rich text formatting
+- Automatic time-series rollups (hourly → daily → weekly → monthly)
+- Full-text search across all journal entries
+- Context-aware retrieval for relevant historical reflections
+- Tags and metadata support
+- Storage: `data/users/{thread_id}/journal/journal.db` (SQLite with FTS5)
+- 8 comprehensive tools for journal management
+
+**New Feature: Goals System**
+- Create, update, track, and complete long-term goals
+- Progress tracking with percentage completion
+- Deadline management with overdue detection
+- Automatic version history for all goal changes
+- Priority levels (low, medium, high, critical)
+- Status workflow: draft → active → completed → cancelled
+- Storage: `data/users/{thread_id}/goals/goals.db` (SQLite with versioning)
+- 10 comprehensive tools for goal management
+
+**New Feature: Onboarding System**
+- Guided profile creation for new users
+- 5-section onboarding flow:
+  1. Basic Info (name, role, timezone)
+  2. Communication Style (verbosity, format preferences)
+  3. Work Preferences (productivity patterns, focus hours)
+  4. Goals & Objectives (short-term and long-term)
+  5. Additional Context (anything else relevant)
+- Automatic memory creation from responses
+- One-time setup per thread
+- Context injection into system prompts
+- 5 onboarding tools for guided setup
+
+**Architecture Improvements:**
+- 4-pillar unified context architecture provides comprehensive user understanding
+- All pillars use thread-scoped storage for privacy
+- Unified query interface for parallel pillar searches
+- Context injection provides LLM with rich, structured context
+- Journal rollups enable efficient time-series analysis
+- Goals version history provides complete audit trail
+- Onboarding creates strong initial context foundation
+
+**Tool Count:**
+- Increased from 101 to 131 tools (+30 new tools)
+  - +8 Journal tools
+  - +10 Goals tools
+  - +5 Onboarding tools
+  - +1 Unified context query tool
+  - +6 Memory enhancement tools
+
+**Token Impact:**
+- Total tool overhead: ~10,500 tokens (up from ~8,100)
+- Still only 5% of 200K context window
+- Rich context awareness outweighs token cost
+
+**Storage Updates:**
+- Added 3 new SQLite databases per thread:
+  - `journal.db` (FTS5-enabled)
+  - `goals.db` (with versioning)
+  - Enhanced `memories.db` (existing)
+- All 4 pillars now have dedicated storage backends
+
+**New Files:**
+- `src/executive_assistant/storage/journal_storage.py` (200+ lines)
+- `src/executive_assistant/storage/goals_storage.py` (300+ lines)
+- `src/executive_assistant/onboarding/onboarding.py` (150+ lines)
+- `src/executive_assistant/tools/journal_tools.py` (250+ lines)
+- `src/executive_assistant/tools/goals_tools.py` (300+ lines)
+- `src/executive_assistant/tools/onboarding_tools.py` (120+ lines)
+- `src/executive_assistant/tools/context_query_tool.py` (80+ lines)
 
 ### Key Changes in v1.3.0
 
