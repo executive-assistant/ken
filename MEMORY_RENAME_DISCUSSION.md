@@ -1,6 +1,8 @@
-# Rename Discussion: "Memory" → More Descriptive Name
+# Rename Discussion: "Memory" → Semantic (LangChain Alignment)
 
 **Current Issue**: The term "memory" is generic and may cause confusion for admins/devs.
+
+**Better Approach**: Align with LangChain's established terminology for consistency.
 
 ---
 
