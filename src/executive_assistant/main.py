@@ -147,14 +147,12 @@ async def main() -> None:
     model = create_model()
     print(f" Using LLM provider: {settings.DEFAULT_LLM_PROVIDER}")
 
-    # Load skills from content directory
+    # Create skills registry
     registry = get_skills_registry()
-    skills_dir = Path(__file__).parent / "skills" / "content"
-    startup_count, on_demand_count = load_and_register_skills(skills_dir)
-    print(f" Loaded {startup_count} startup skills, {on_demand_count} on-demand skills")
-    
-    # Load admin skills (treat as startup skills)
+
+    # Load admin skills FIRST (so they appear before system skills in prompt)
     admin_skills_dir = settings.ADMINS_ROOT / "skills"
+    has_admin_skills = False
     if admin_skills_dir.exists():
         from executive_assistant.skills.loader import load_skills_from_directory
         admin_result = load_skills_from_directory(admin_skills_dir)
@@ -163,7 +161,34 @@ async def main() -> None:
             registry.register(skill)
         admin_total = len(admin_result.startup) + len(admin_result.on_demand)
         if admin_total > 0:
+            has_admin_skills = True
             print(f" Loaded {admin_total} admin skills")
+
+    # Load system skills from content directory (loaded AFTER admin skills)
+    # Skip onboarding skill if admin skills are present (specialized mode)
+    from executive_assistant.skills.loader import load_skills_from_directory
+    skills_dir = Path(__file__).parent / "skills" / "content"
+    system_result = load_skills_from_directory(skills_dir)
+
+    # Filter out onboarding if admin skills present (specialized mode)
+    startup_skills_to_load = system_result.startup
+    if has_admin_skills:
+        startup_skills_to_load = [
+            s for s in system_result.startup
+            if "onboarding" not in s.name.lower()
+        ]
+        if len(startup_skills_to_load) < len(system_result.startup):
+            print(f" Skipping onboarding (admin skills present - specialized mode)")
+
+    # Register system skills
+    for skill in startup_skills_to_load:
+        registry.register(skill)
+    for skill in system_result.on_demand:
+        if "on_demand" not in skill.tags:
+            skill.tags.append("on_demand")
+        registry.register(skill)
+
+    print(f" Loaded {len(startup_skills_to_load)} startup skills, {len(system_result.on_demand)} on-demand skills")
 
     # Load tools (includes load_skill tool)
     tools = await get_all_tools()
