@@ -28,6 +28,18 @@ from executive_assistant.learning.verify import (
 )
 
 
+def _ensure_thread_id() -> str | None:
+    """Get thread_id and return error message if None.
+
+    Returns:
+        thread_id if available, None otherwise
+    """
+    thread_id = get_thread_id()
+    if not thread_id:
+        return None
+    return thread_id
+
+
 # ====================================================================================
 # TEACH → VERIFY TOOLS
 # ====================================================================================
@@ -42,7 +54,11 @@ def verify_preferences() -> str:
     Returns:
         Verification status and pending items
     """
-    thread_id = get_thread_id()
+    thread_id = _ensure_thread_id()
+    if not thread_id:
+        return """❌ Unable to retrieve verifications.
+
+No active conversation context found. Please start a conversation first."""
 
     try:
         pending = get_pending_verifications(thread_id)
@@ -91,7 +107,11 @@ def confirm_learning(verification_id: str, response: str) -> str:
     Returns:
         Confirmation result
     """
-    thread_id = get_thread_id()
+    thread_id = _ensure_thread_id()
+    if not thread_id:
+        return """❌ Unable to confirm learning.
+
+No active conversation context found. Please start a conversation first."""
 
     try:
         confirmed = confirm_verification(verification_id, thread_id, response)
@@ -124,7 +144,11 @@ def show_reflections() -> str:
     Returns:
         Reflections and improvement suggestions
     """
-    thread_id = get_thread_id()
+    thread_id = _ensure_thread_id()
+    if not thread_id:
+        return """❌ Unable to retrieve reflections.
+
+No active conversation context found. Please start a conversation first."""
 
     try:
         reflections = get_recent_reflections(thread_id, limit=5)
@@ -175,7 +199,11 @@ def create_learning_reflection(
     Returns:
         Reflection confirmation
     """
-    thread_id = get_thread_id()
+    thread_id = _ensure_thread_id()
+    if not thread_id:
+        return """❌ Unable to create reflection.
+
+No active conversation context found. Please start a conversation first."""
 
     try:
         import asyncio
@@ -210,7 +238,11 @@ def implement_improvement(suggestion_id: str) -> str:
     Returns:
         Confirmation message
     """
-    thread_id = get_thread_id()
+    thread_id = _ensure_thread_id()
+    if not thread_id:
+        return """❌ Unable to implement improvement.
+
+No active conversation context found. Please start a conversation first."""
 
     try:
         mark_improvement_implemented(suggestion_id, thread_id)
@@ -237,7 +269,11 @@ def show_patterns() -> str:
     Returns:
         Patterns and prediction statistics
     """
-    thread_id = get_thread_id()
+    thread_id = _ensure_thread_id()
+    if not thread_id:
+        return """❌ Unable to retrieve patterns.
+
+No active conversation context found. Please start a conversation first."""
 
     try:
         stats = get_prediction_stats(thread_id)
@@ -270,7 +306,11 @@ def show_prepared_data() -> str:
     Returns:
         Prepared data items
     """
-    thread_id = get_thread_id()
+    thread_id = _ensure_thread_id()
+    if not thread_id:
+        return """❌ Unable to retrieve prepared data.
+
+No active conversation context found. Please start a conversation first."""
 
     try:
         prepared = get_prepared_data(thread_id)
@@ -314,7 +354,11 @@ def learn_pattern(
     Returns:
         Learning confirmation
     """
-    thread_id = get_thread_id()
+    thread_id = _ensure_thread_id()
+    if not thread_id:
+        return """❌ Unable to learn pattern.
+
+No active conversation context found. Please start a conversation first."""
 
     try:
         import asyncio
@@ -358,6 +402,12 @@ def learning_stats() -> str:
         Comprehensive learning statistics
     """
     thread_id = get_thread_id()
+
+    if not thread_id:
+        return """❌ Unable to retrieve learning statistics.
+
+No active conversation context found. Please start a conversation first,
+and learning statistics will be available."""
 
     try:
         verify_stats = get_verification_stats(thread_id)
