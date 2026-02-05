@@ -147,10 +147,12 @@ You: apply_profile "Concise Professional"
 
 **NEW:** Ken can proactively monitor your journal and goals, surfacing insights without you asking:
 
+- **Enabled by Default**: All new users get check-in automatically
 - **Periodic Analysis**: Checks your journal and goals every 30 minutes (configurable)
 - **Pattern Detection**: Identifies work patterns, inactivity, misalignment
 - **Intelligent Filtering**: Only messages when something important needs attention
 - **Stay Silent**: No spam - stays quiet if everything is on track
+- **Easy to Disable**: Just say `checkin_disable()` if you don't want it
 
 **Example:**
 ```
@@ -819,15 +821,15 @@ import_instincts                    # Import patterns from teammates
 
 ### Check-in Tools (Proactive Monitoring)
 
-Enable proactive journal and goals monitoring:
+Check-in is **enabled by default** for all users. Manage it with these tools:
 
 ```bash
-checkin_enable()                    # Enable check-in (default: 30m, 24h lookback)
+checkin_enable()                    # Enable or re-enable (default: 30m, 24h lookback)
 checkin_enable("1h", "7d")          # Custom: every 1 hour, look back 7 days
-checkin_disable()                   # Disable check-in
+checkin_disable()                   # Disable if you don't want proactive messages
 checkin_show()                      # Show current configuration
 checkin_schedule("1h")              # Change frequency
-checkin_hours("9:00", "18:00")      # Set active hours
+checkin_hours("9:00", "18:00")      # Set active hours (9am-6pm weekdays)
 checkin_test()                      # Run once to test
 ```
 

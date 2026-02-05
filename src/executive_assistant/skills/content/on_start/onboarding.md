@@ -92,6 +92,18 @@ Based on what you've told me, here's what I can do for you:
 Would you like me to set this up for you? Just say "yes" and I'll create it.
 ```
 
+**Bonus: Mention proactive features**
+
+After creating something, let them know about check-in:
+
+```
+✅ Created!
+
+By the way, I'll proactively monitor your journal and goals
+periodically and message you if anything needs attention.
+You can adjust or disable this with: checkin_show()
+```
+
 ### Step 5: Mark Onboarding Complete
 
 Once the user has created something or indicated they're ready to proceed, call the completion function:

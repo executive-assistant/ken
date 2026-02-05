@@ -42,11 +42,11 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     conn.execute("""
         CREATE TABLE IF NOT EXISTS checkin_config (
             thread_id TEXT PRIMARY KEY,
-            enabled INTEGER DEFAULT 0,
+            enabled INTEGER DEFAULT 1,
             every TEXT DEFAULT '30m',
             lookback TEXT DEFAULT '24h',
-            active_hours_start TEXT,
-            active_hours_end TEXT,
+            active_hours_start TEXT DEFAULT '09:00',
+            active_hours_end TEXT DEFAULT '18:00',
             active_days TEXT DEFAULT 'Mon,Tue,Wed,Thu,Fri',
             last_checkin TEXT,
             updated_at TEXT NOT NULL,
@@ -62,11 +62,11 @@ class CheckinConfig:
     def __init__(
         self,
         thread_id: str,
-        enabled: bool = False,
+        enabled: bool = True,  # Enabled by default
         every: str = "30m",
         lookback: str = "24h",
-        active_hours_start: str | None = None,
-        active_hours_end: str | None = None,
+        active_hours_start: str | None = "09:00",
+        active_hours_end: str | None = "18:00",
         active_days: str = "Mon,Tue,Wed,Thu,Fri",
         last_checkin: str | None = None,
     ):
@@ -148,8 +148,16 @@ def get_checkin_config(thread_id: str | None = None) -> CheckinConfig:
         ).fetchone()
 
         if not row:
-            # Return default config
-            return CheckinConfig(thread_id=thread_id)
+            # Return default config (enabled by default)
+            return CheckinConfig(
+                thread_id=thread_id,
+                enabled=True,  # Enabled by default
+                every="30m",
+                lookback="24h",
+                active_hours_start="09:00",
+                active_hours_end="18:00",
+                active_days="Mon,Tue,Wed,Thu,Fri",
+            )
 
         return CheckinConfig(
             thread_id=row["thread_id"],
