@@ -37,7 +37,7 @@ admin:
 # LLM Configuration
 llm:
   # Default LLM provider: anthropic, openai, zhipu, ollama, gemini, qwen, kimi, minimax
-  default_provider: zhipu
+  default_provider: ollama
 
   # Provider-specific model configurations
   anthropic:

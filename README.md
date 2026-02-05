@@ -38,6 +38,16 @@ Executive Assistant uses a skills system to choose the right approach:
 
 You don't need to remember which tool does what—Executive Assistant figures it out from context.
 
+## 📚 User Documentation
+
+First-time users? Start here:
+
+- **[GETTING_STARTED](USER_MANUALS/GETTING_STARTED.md)** - Quick start guide for new users
+- **[ESSENTIAL_COMMANDS](USER_MANUALS/ESSENTIAL_COMMANDS.md)** - Complete command reference
+- **[MEMORY_AND_KNOWLEDGE](USER_MANUALS/MEMORY_AND_KNOWLEDGE.md)** - How memory and knowledge work
+- **[COMPLETE_EXAMPLES](USER_MANUALS/COMPLETE_EXAMPLES.md)** - Real-world workflow examples
+- **[CONVERSATION_TO_SKILL](USER_MANUALS/CONVERSATION_TO_SKILL.md)** - Turn conversations into reusable skills
+
 ## Unified Context System: How Executive Assistant Remembers Everything
 
 Executive Assistant uses a **4-pillar unified context system** to build persistent understanding across conversations. Each pillar serves a distinct purpose, working together to create comprehensive memory.
@@ -132,6 +142,16 @@ You: apply_profile "Concise Professional"
 ```
 
 > **Inspired by** [Everything with Claude Code](https://github.com/affaan-m/everything-claude-code)'s continuous learning system, instincts provide adaptive behavior that evolves with your usage patterns.
+
+**Turn Conversations into Reusable Skills:**
+Over time, Ken learns patterns from your conversations and can cluster them into reusable skills:
+```
+1. Build patterns through natural conversations
+2. Use evolve_instincts() to generate draft skills
+3. Approve skills with approve_evolved_skill('draft_id')
+4. Skills are automatically applied in future conversations
+```
+See [USER_MANUALS/CONVERSATION_TO_SKILL.md](USER_MANUALS/CONVERSATION_TO_SKILL.md) for complete guide.
 
 ### Persistent Memory System
 
