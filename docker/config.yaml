@@ -37,7 +37,7 @@ admin:
 # LLM Configuration
 llm:
   # Default LLM provider: anthropic, openai, zhipu, ollama, gemini, qwen, kimi, minimax
-  default_provider: openai
+  default_provider: zhipu
 
   # Provider-specific model configurations
   anthropic:
@@ -49,8 +49,8 @@ llm:
     fast_model: gpt-5-mini-2025-08-07
 
   zhipu:
-    default_model: glm-4-plus
-    fast_model: glm-4-flash
+    default_model: glm-4.7
+    fast_model: glm-4.7-flash
 
   ollama:
     default_model: qwen3-next:80b-cloud
