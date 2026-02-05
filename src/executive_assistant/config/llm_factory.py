@@ -39,6 +39,22 @@ MODEL_PATTERNS = {
     "minimax": r"^(?:MiniMax-)?M2(?:\.[a-z0-9]+)?(?:-[A-Za-z]+)?$",
 }
 
+# Ollama Cloud models that do NOT support JSON Schema for tool calling
+# These models will fail when bind_tools() is called with JSON Schema format
+OLLAMA_INCOMPATIBLE_MODELS = {
+    "kimi-k2.5:cloud": "JSON Schema not supported - use native Kimi provider instead",
+    "deepseek-v3.2:cloud": "XML tool calling only - not compatible with LangChain bind_tools()",
+}
+
+# Ollama Cloud models with verified JSON Schema tool calling support
+OLLAMA_COMPATIBLE_MODELS = {
+    "deepseek-v3.1:671b-cloud": "Recommended - full JSON Schema support",
+    "glm-4.7:cloud": "Good - JSON Schema supported",
+    "minimax-m2.1:cloud": "Good - JSON Schema supported",
+    "gpt-oss:20b-cloud": "Good - JSON Schema supported",
+    "qwen3-next:80b-cloud": "Good - JSON Schema supported",
+}
+
 
 def validate_llm_config() -> None:
     """Validate LLM configuration on startup.
@@ -98,6 +114,16 @@ def validate_llm_config() -> None:
                 "OLLAMA_MODE=cloud requires OLLAMA_CLOUD_API_KEY to be set. "
                 "Use OLLAMA_MODE=local for local Ollama (no API key required)."
             )
+
+        # Warn about incompatible Ollama Cloud models (only check if in cloud mode)
+        if settings.OLLAMA_MODE == "cloud":
+            for model_variant_name, model_name in [("default", default_model), ("fast", fast_model)]:
+                if model_name in OLLAMA_INCOMPATIBLE_MODELS:
+                    logger.warning(
+                        "Ollama Cloud model '%s' (%s variant) doesn't support JSON Schema tool calling: %s. "
+                        "Use a different model or the native provider for full tool support.",
+                        model_name, model_variant_name, OLLAMA_INCOMPATIBLE_MODELS[model_name]
+                    )
 
     # Check API key for cloud providers
     if provider in ["anthropic", "openai", "zhipu"]:
@@ -204,6 +230,31 @@ def _get_ollama_config(model: str = "default") -> tuple[str, str, str | None]:
     return base_url, model_name, api_key
 
 
+def check_ollama_tool_compatibility(model_name: str) -> tuple[bool, str | None]:
+    """Check if an Ollama Cloud model supports JSON Schema tool calling.
+
+    Args:
+        model_name: The Ollama model name to check
+
+    Returns:
+        (is_compatible, error_message or None)
+    """
+    # Check if model is in incompatible list
+    if model_name in OLLAMA_INCOMPATIBLE_MODELS:
+        return False, OLLAMA_INCOMPATIBLE_MODELS[model_name]
+
+    # Check if model ends with :cloud (unverified model)
+    if model_name.endswith(":cloud") and model_name not in OLLAMA_COMPATIBLE_MODELS:
+        logger.warning(
+            "Ollama Cloud model '%s' not in compatibility list. "
+            "Tool calling may fail if model doesn't support JSON Schema. "
+            "Test with a simple tool call first.",
+            model_name
+        )
+
+    return True, None
+
+
 class LLMFactory:
     """Factory for creating LLM instances."""
 
@@ -266,8 +317,21 @@ class LLMFactory:
 
         For cloud mode, requires OLLAMA_CLOUD_API_KEY to be set.
         For local mode, no API key needed.
+
+        Note: Some Ollama Cloud models don't support JSON Schema for tool calling.
+        Incompatible models will be logged with a warning.
         """
         base_url, model_name, api_key = _get_ollama_config(model)
+
+        # Check tool compatibility for cloud models
+        if api_key:  # Cloud mode
+            is_compatible, error_msg = check_ollama_tool_compatibility(model_name)
+            if not is_compatible:
+                logger.warning(
+                    "Ollama Cloud model '%s' doesn't support JSON Schema tool calling: %s. "
+                    "Tool calling features may not work correctly.",
+                    model_name, error_msg
+                )
 
         # Build ChatOllama kwargs
         ollama_kwargs = {
@@ -285,7 +349,11 @@ class LLMFactory:
             ollama_kwargs["client_kwargs"] = client_kwargs
 
         ollama_kwargs.update(kwargs)
-        return ChatOllama(**ollama_kwargs)
+        llm = ChatOllama(**ollama_kwargs)
+
+        # Store model name for compatibility checking downstream
+        llm.model_name = model_name  # type: ignore[attr-defined]
+        return llm
 
     @staticmethod
     def _create_gemini(model: str = "default", **kwargs) -> BaseChatModel:
