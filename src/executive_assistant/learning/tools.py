@@ -133,7 +133,7 @@ def show_reflections() -> str:
 
         result = f"""📊 Learning Progress:
 
-Reflections: {stats['total_reflection']}
+Reflections: {stats['total_reflections']}
 • With corrections: {stats['with_corrections']}
 • Improvement suggestions: {stats['total_suggestions']}
 • Implemented: {stats['implemented_suggestions']}
@@ -375,7 +375,7 @@ Verifications: {verify_stats['total']}
 
 REFLECT → IMPROVE
 -----------------
-Reflections: {reflect_stats['total_reflection']}
+Reflections: {reflect_stats['total_reflections']}
 • With Corrections: {reflect_stats['with_corrections']}
 • Improvement Suggestions: {reflect_stats['total_suggestions']}
 • Implemented: {reflect_stats['implemented_suggestions']}
