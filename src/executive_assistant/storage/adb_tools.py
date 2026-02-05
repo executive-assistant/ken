@@ -14,7 +14,7 @@ from executive_assistant.storage.thread_storage import require_permission
 from executive_assistant.storage.file_sandbox import get_sandbox
 
 
-Scope = Literal["context"]
+Scope = Literal["context", "shared"]
 
 
 def _split_sql_statements(sql: str) -> list[str]:
@@ -70,12 +70,12 @@ def _format_query_results(columns: list[str], rows: list[tuple]) -> str:
 @tool("list_adb_tables", description="List tables in the analytics DuckDB (ADB).")
 @require_permission("read")
 def list_adb_tables(scope: Scope = "context") -> str:
-    """List tables in the DuckDB ADB (context-scoped). [ADB]
+    """List tables in the DuckDB ADB. [ADB]
 
     USE THIS WHEN: You want to see available tables in the analytics DB.
 
     Args:
-        scope: "context" (default) for thread-scoped ADB.
+        scope: "context" (default) for thread-scoped ADB, "shared" for organization-wide ADB.
 
     Returns:
         List of table names.
@@ -149,13 +149,14 @@ def create_adb_table(
         create_adb_table("users", data=[{"id": 1, "name": "Alice"}])
         create_adb_table("users", data='[{"id": 1, "name": "Alice"}]')
         create_adb_table("sales", csv_file="sales.csv")
+        create_adb_table("org_metrics", scope="shared", data=[{"metric": "active_users", "value": 150}])
 
     Args:
         table_name: Name for the new table.
         data: List of dicts OR JSON string (e.g., [{"id": 1, "name": "Alice"}]).
         csv_file: Path to CSV file to import (optional).
         json_file: Path to JSON file to import (optional).
-        scope: "context" (default) for thread-scoped ADB.
+        scope: "context" (default) for thread-scoped ADB, "shared" for organization-wide ADB.
 
     Returns:
         Success message with row count.

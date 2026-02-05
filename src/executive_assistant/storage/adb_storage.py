@@ -13,18 +13,23 @@ from executive_assistant.storage.thread_storage import get_thread_id
 from executive_assistant.storage.user_registry import register_adb_path_best_effort
 
 
-Scope = Literal["context"]
+Scope = Literal["context", "shared"]
 
 
 def _get_adb_path(scope: Scope = "context") -> Path:
     """Resolve the DuckDB adb DB path for the current context.
 
-    Priority (context scope):
-    1) thread_id
+    Priority:
+    - context scope: thread_id → thread-specific adb directory
+    - shared scope: SHARED_ROOT → shared adb directory for all users
     """
-    if scope != "context":
-        raise ValueError("ADB DB only supports scope='context' for now")
+    if scope == "shared":
+        # Use shared adb directory for organization-wide data
+        path = settings.SHARED_ROOT / "adb"
+        path.mkdir(parents=True, exist_ok=True)
+        return path / "duckdb.db"
 
+    # Context scope (default)
     thread_id = get_thread_id()
     if not thread_id:
         raise ValueError("No thread_id context available")
