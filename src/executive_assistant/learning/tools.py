@@ -11,7 +11,9 @@ from executive_assistant.storage.file_sandbox import get_thread_id
 from executive_assistant.learning.prediction import (
     check_and_offer_preparation,
     create_preparation,
+    detect_pattern,
     get_prediction_stats,
+    get_prepared_data,
 )
 from executive_assistant.learning.reflection import (
     create_reflection,
