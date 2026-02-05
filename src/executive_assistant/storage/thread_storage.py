@@ -12,6 +12,7 @@ Storage layout:
     vdb/
 """
 
+import threading
 from contextvars import ContextVar
 from functools import wraps
 from pathlib import Path
@@ -25,13 +26,48 @@ _thread_id: ContextVar[str | None] = ContextVar("_thread_id", default=None)
 _channel: ContextVar[str | None] = ContextVar("_channel", default=None)
 _chat_type: ContextVar[str | None] = ContextVar("_chat_type", default=None)
 
+# Global fallback for ThreadPoolExecutor scenarios
+# Key: main asyncio thread ID (accessible from all worker threads)
+# Value: dict of context values
+_context_fallback: dict = {}
+_context_lock = threading.Lock()
+_main_thread_id: int | None = None
+
+
+def _get_context_key() -> int:
+    """Get the main thread ID as the context key."""
+    global _main_thread_id
+    if _main_thread_id is None:
+        # Detect the main thread (where asyncio event loop runs)
+        try:
+            import asyncio
+            asyncio.current_task()  # Will raise RuntimeError if not in async context
+            _main_thread_id = threading.get_ident()
+        except RuntimeError:
+            # Not in async context, use current thread ID
+            _main_thread_id = threading.get_ident()
+    return _main_thread_id
+
 
 def set_thread_id(thread_id: str) -> None:
     _thread_id.set(thread_id)
+    # Also store in fallback for ThreadPoolExecutor scenarios
+    key = _get_context_key()
+    with _context_lock:
+        if key not in _context_fallback:
+            _context_fallback[key] = {}
+        _context_fallback[key]['thread_id'] = thread_id
 
 
 def get_thread_id() -> str | None:
-    return _thread_id.get()
+    # First try ContextVar (async context)
+    thread_id = _thread_id.get()
+    if thread_id:
+        return thread_id
+    # Fallback to global dict (for thread pool execution)
+    key = _get_context_key()
+    with _context_lock:
+        return _context_fallback.get(key, {}).get('thread_id')
 
 
 def clear_thread_id() -> None:
@@ -43,18 +79,38 @@ def clear_thread_id() -> None:
 
 def set_channel(channel: str) -> None:
     _channel.set(channel)
+    key = _get_context_key()
+    with _context_lock:
+        if key not in _context_fallback:
+            _context_fallback[key] = {}
+        _context_fallback[key]['channel'] = channel
 
 
 def get_channel() -> str | None:
-    return _channel.get()
+    channel = _channel.get()
+    if channel:
+        return channel
+    key = _get_context_key()
+    with _context_lock:
+        return _context_fallback.get(key, {}).get('channel')
 
 
 def set_chat_type(chat_type: str) -> None:
     _chat_type.set(chat_type)
+    key = _get_context_key()
+    with _context_lock:
+        if key not in _context_fallback:
+            _context_fallback[key] = {}
+        _context_fallback[key]['chat_type'] = chat_type
 
 
 def get_chat_type() -> str | None:
-    return _chat_type.get()
+    chat_type = _chat_type.get()
+    if chat_type:
+        return chat_type
+    key = _get_context_key()
+    with _context_lock:
+        return _context_fallback.get(key, {}).get('chat_type')
 
 
 def clear_chat_type() -> None:
