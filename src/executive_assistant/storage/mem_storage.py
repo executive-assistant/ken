@@ -200,7 +200,7 @@ class MemoryStorage:
             # Check if key already exists
             if key:
                 existing = conn.execute(
-                    "SELECT id, version, content FROM memories WHERE key = ? AND status = 'active' ORDER BY updated_at DESC LIMIT 1",
+                    "SELECT id, version, content FROM memories WHERE key = ? AND status = 'active' AND valid_to IS NULL ORDER BY updated_at DESC LIMIT 1",
                     (key,),
                 ).fetchone()
 
@@ -467,7 +467,7 @@ class MemoryStorage:
                   AND status = 'active'
                   AND valid_from <= ?
                   AND (valid_to IS NULL OR valid_to > ?)
-                ORDER BY version ASC
+                ORDER BY version DESC
                 LIMIT 1
                 """,
                 (key, query_time, query_time)
@@ -554,7 +554,7 @@ class MemoryStorage:
                     """
                     SELECT id, memory_type, key, content, confidence, status, created_at, updated_at
                     FROM memories
-                    WHERE memory_type = ? AND status = ?
+                    WHERE memory_type = ? AND status = ? AND valid_to IS NULL
                     ORDER BY updated_at DESC
                     """,
                     (memory_type, status),
@@ -564,7 +564,7 @@ class MemoryStorage:
                     """
                     SELECT id, memory_type, key, content, confidence, status, created_at, updated_at
                     FROM memories
-                    WHERE status = ?
+                    WHERE status = ? AND valid_to IS NULL
                     ORDER BY updated_at DESC
                     """,
                     (status,),
@@ -606,7 +606,7 @@ class MemoryStorage:
                     SELECT m.id, m.memory_type, m.key, m.content, m.confidence, m.status, m.created_at, m.updated_at
                     FROM mem_fts
                     JOIN memories m ON m.rowid = mem_fts.rowid
-                    WHERE m.status = 'active' AND m.confidence >= ? AND mem_fts MATCH ?
+                    WHERE m.status = 'active' AND m.valid_to IS NULL AND m.confidence >= ? AND mem_fts MATCH ?
                     ORDER BY rank
                     LIMIT ?
                     """,
@@ -617,7 +617,7 @@ class MemoryStorage:
                     """
                     SELECT id, memory_type, key, content, confidence, status, created_at, updated_at
                     FROM memories
-                    WHERE status = 'active'
+                    WHERE status = 'active' AND valid_to IS NULL
                       AND confidence >= ?
                       AND (LOWER(content) LIKE LOWER(?) OR LOWER(key) LIKE LOWER(?))
                     ORDER BY created_at DESC
@@ -654,7 +654,7 @@ class MemoryStorage:
                 """
                 SELECT id, memory_type, key, content, confidence, status, created_at, updated_at
                 FROM memories
-                WHERE status = 'active' AND normalized_content = ?
+                WHERE status = 'active' AND valid_to IS NULL AND normalized_content = ?
                 ORDER BY updated_at DESC
                 LIMIT 1
                 """,
@@ -686,7 +686,7 @@ class MemoryStorage:
                 """
                 SELECT id, memory_type, key, content, confidence, status, created_at, updated_at
                 FROM memories
-                WHERE key = ? AND status = 'active'
+                WHERE key = ? AND status = 'active' AND valid_to IS NULL
                 ORDER BY updated_at DESC
                 LIMIT 1
                 """,
@@ -723,7 +723,7 @@ class MemoryStorage:
         conn = self.get_connection(thread_id)
         try:
             existing = conn.execute(
-                "SELECT id, version, content, confidence, key, history FROM memories WHERE key = ? AND status = 'active' AND valid_to IS NULL LIMIT 1",
+                "SELECT * FROM memories WHERE key = ? AND status = 'active' AND valid_to IS NULL LIMIT 1",
                 (key,),
             ).fetchone()
             if existing:

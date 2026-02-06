@@ -429,6 +429,10 @@ def delete_file(file_path: str, scope: Literal["context", "shared"] = "context")
         return f"Path is a directory, not a file: {file_path}"
     except OSError as e:
         return f"OS error deleting file: {e}"
+
+
+@tool
+@require_permission("write")
 def move_file(
     source: str, destination: str, scope: Literal["context", "shared"] = "context"
 ) -> str:

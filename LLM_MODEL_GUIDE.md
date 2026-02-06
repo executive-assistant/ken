@@ -42,6 +42,7 @@ All models below support proper tool calling via Ollama Cloud:
 | Model | Size | Speed | Use Case |
 |-------|------|-------|----------|
 | **qwen3-next:80b-cloud** | 80B | Fast (10-20s) | **Production (RECOMMENDED)** |
+| kimi-k2.5:cloud | - | Medium/Fast | Works with tool calling (verified) |
 | deepseek-v3.1:671b-cloud | 671B | Medium | General tasks |
 | glm-4.7:cloud | - | Fast | Chinese language |
 | minimax-m2.1:cloud | - | Fast | Cost-effective |
@@ -49,9 +50,9 @@ All models below support proper tool calling via Ollama Cloud:
 
 ---
 
-## Models to Avoid
+## Model-Specific Notes
 
-### ❌ deepseek-v3.2:cloud
+### ⚠️ deepseek-v3.2:cloud
 
 **Issue:** Generates tool calls in old XML format:
 ```xml
@@ -61,17 +62,15 @@ All models below support proper tool calling via Ollama Cloud:
 </function_calls>
 ```
 
-**Problem:** LangChain doesn't recognize this format, so tools never execute.
+**Problem (raw LangChain):** `bind_tools()` won't populate `tool_calls` from this XML format.
 
-**Status:** Do NOT use for tool calling. Works for simple chat only.
+**Project Status:** Supported via compatibility parser in channel fallback (`<function_calls>` XML is parsed and executed).
 
-### ❌ kimi-k2.5:cloud
+### ✅ kimi-k2.5:cloud
 
-**Issue:** JSON Schema not supported
+**Current status:** Structured tool calls are returned in runtime probes with this project setup.
 
-**Error:** `JSON Schema not supported: could not understand the instance {}.`
-
-**Status:** Not compatible with current tool system.
+**Recommendation:** Safe to use, but keep compatibility probes in CI because provider behavior can drift.
 
 ---
 
@@ -150,6 +149,8 @@ Average execution times for single tool call (qwen3-next:80b-cloud):
 
 4. **Expected:** Should see `🛠️ 1: list_profiles` and results in 10-20s.
 
+Note: deepseek-v3.2 can still work in this codebase due XML fallback parsing, but qwen3-next remains the most stable default.
+
 ---
 
 ## Troubleshooting
@@ -226,6 +227,6 @@ See `docker/config.yaml` for configuration examples.
 
 ---
 
-**Last Updated:** 2026-02-05
+**Last Updated:** 2026-02-07
 **Model Version:** qwen3-next:80b-cloud via Ollama Cloud
 **Status:** ✅ Production Ready

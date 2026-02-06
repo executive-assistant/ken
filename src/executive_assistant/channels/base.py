@@ -2,7 +2,14 @@
 
 from abc import ABC, abstractmethod
 import asyncio
+from collections import OrderedDict
 import contextvars
+import hashlib
+import html
+import json
+import re
+import time
+from dataclasses import dataclass
 from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -26,6 +33,28 @@ from executive_assistant.agent.flow_mode import (
 )
 
 logger = get_logger(__name__)
+
+_SIMPLE_CHAT_PATTERN = re.compile(
+    r"^\s*(hi|hello|hey|yo|sup|good (morning|afternoon|evening)|thanks?|thank you|thx|ok|okay|cool|great|nice|how are you( doing)?|what can you do\??|help\??)\s*[!.?]*\s*$",
+    re.IGNORECASE,
+)
+
+_TOOL_INTENT_HINTS = (
+    "file", "folder", "path", "table", "database", "sql", "query",
+    "tdb", "adb", "vdb", "python", "script", "code", "run ",
+    "create", "insert", "update", "delete", "write", "read", "fetch", "summarize",
+    "search", "web", "browse", "scrape", "crawl",
+    "reminder", "schedule", "todo", "checkin", "flow",
+    "mcp", "server", "skill", "load_skill",
+    "memory", "remember", "forget",
+)
+
+
+@dataclass
+class _AgentCacheEntry:
+    agent: Runnable
+    created_at: float
+    last_used_at: float
 
 
 class MessageFormat(dict):
@@ -91,6 +120,17 @@ class BaseChannel(ABC):
         self._active_tasks: dict[str, Any] = {}
         self._interrupted_chats: set[str] = set()
         self._profile_loaded: set[str] = set()  # Track which thread profiles are cached
+        self._request_agent_cache: OrderedDict[str, _AgentCacheEntry] = OrderedDict()
+        self._request_agent_cache_lock = asyncio.Lock()
+        self._agent_cache_enabled = bool(getattr(settings, "AGENT_CACHE_ENABLED", True))
+        self._agent_cache_ttl_seconds = max(
+            int(getattr(settings, "AGENT_CACHE_TTL_SECONDS", 900)),
+            30,
+        )
+        self._agent_cache_max_entries = max(
+            int(getattr(settings, "AGENT_CACHE_MAX_ENTRIES", 64)),
+            1,
+        )
 
 
     def cancel_active_task(self, conversation_id: str) -> bool:
@@ -151,27 +191,123 @@ class BaseChannel(ABC):
             k in lowered for k in tool_keywords
         )
 
-    async def _build_request_agent(self, message_text: str, conversation_id: str, thread_id: str | None = None) -> Runnable:
+    def _is_simple_chat(self, text: str) -> bool:
+        """Conservative classifier for low-risk conversational turns."""
+        if not text:
+            return False
+        trimmed = text.strip()
+        if len(trimmed) > 80:
+            return False
+        if _SIMPLE_CHAT_PATTERN.match(trimmed):
+            return True
+        lowered = trimmed.lower()
+        if "http://" in lowered or "https://" in lowered:
+            return False
+        if any(hint in lowered for hint in _TOOL_INTENT_HINTS):
+            return False
+        # Keep simple-tool profile for very short acknowledgements only.
+        return len(trimmed.split()) <= 2 and trimmed.isalpha()
+
+    def _tools_signature(self, tools: list[Any]) -> str:
+        names = []
+        for tool in tools:
+            name = getattr(tool, "name", None) or getattr(tool, "__name__", "")
+            if name:
+                names.append(name)
+        names.sort()
+        payload = "|".join(names)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+    async def _get_cached_agent(self, cache_key: str) -> Runnable | None:
+        if not self._agent_cache_enabled:
+            return None
+        now = time.time()
+        async with self._request_agent_cache_lock:
+            # Evict expired entries first.
+            expired_keys = [
+                key
+                for key, entry in self._request_agent_cache.items()
+                if now - entry.created_at > self._agent_cache_ttl_seconds
+            ]
+            for key in expired_keys:
+                self._request_agent_cache.pop(key, None)
+
+            entry = self._request_agent_cache.get(cache_key)
+            if not entry:
+                return None
+            entry.last_used_at = now
+            self._request_agent_cache.move_to_end(cache_key)
+            return entry.agent
+
+    async def _set_cached_agent(self, cache_key: str, agent: Runnable) -> None:
+        if not self._agent_cache_enabled:
+            return
+        now = time.time()
+        async with self._request_agent_cache_lock:
+            self._request_agent_cache[cache_key] = _AgentCacheEntry(
+                agent=agent,
+                created_at=now,
+                last_used_at=now,
+            )
+            self._request_agent_cache.move_to_end(cache_key)
+            while len(self._request_agent_cache) > self._agent_cache_max_entries:
+                self._request_agent_cache.popitem(last=False)
+
+    async def _build_request_agent(
+        self,
+        message_text: str,
+        conversation_id: str,
+        thread_id: str | None = None,
+    ) -> tuple[Runnable, dict[str, Any]]:
         from executive_assistant.agent.langchain_agent import create_langchain_agent
         from executive_assistant.config import create_model
-        from executive_assistant.tools.registry import get_all_tools
+        from executive_assistant.tools.registry import get_all_tools, get_tools_for_request
         from executive_assistant.storage.checkpoint import get_async_checkpointer
         from executive_assistant.agent.prompts import get_system_prompt
 
-        tools = await get_all_tools()
-        logger.debug("Building agent with all tools: count=%s", len(tools))
+        tool_profile = "full"
+        if self._is_simple_chat(message_text):
+            tools = await get_tools_for_request(message_text)
+            tool_profile = "simple"
+            if not tools:
+                tools = await get_all_tools()
+                tool_profile = "full_fallback"
+        else:
+            tools = await get_all_tools()
+        logger.debug("Building agent with tools: profile=%s count=%s", tool_profile, len(tools))
         model_variant = "fast" if self._is_planning_only(message_text) else "default"
+        system_prompt = get_system_prompt(self.get_channel_name(), thread_id=thread_id)
+        tools_sig = self._tools_signature(tools)
+        prompt_sig = hashlib.sha256(system_prompt.encode("utf-8")).hexdigest()[:16]
+        cache_thread_id = thread_id or f"{self.get_channel_name()}:{conversation_id}"
+        cache_key = f"{cache_thread_id}|{model_variant}|{tool_profile}|{tools_sig}|{prompt_sig}"
+
+        cached_agent = await self._get_cached_agent(cache_key)
+        if cached_agent is not None:
+            return cached_agent, {
+                "cache_hit": True,
+                "model_variant": model_variant,
+                "tool_profile": tool_profile,
+                "tools_count": len(tools),
+            }
+
         model = create_model(model=model_variant)
         checkpointer = await get_async_checkpointer()
-        system_prompt = get_system_prompt(self.get_channel_name(), thread_id=thread_id)
-
-        return create_langchain_agent(
+        agent = create_langchain_agent(
             model=model,
             tools=tools,
             checkpointer=checkpointer,
             system_prompt=system_prompt,
             channel=self,
         )
+        await self._set_cached_agent(cache_key, agent)
+
+        return agent, {
+            "cache_hit": False,
+            "model_variant": model_variant,
+            "tool_profile": tool_profile,
+            "tools_count": len(tools),
+        }
 
     async def initialize_agent_with_channel(self) -> None:
         """
@@ -281,6 +417,12 @@ class BaseChannel(ABC):
             message: Incoming message in MessageFormat.
         """
         try:
+            request_start = time.perf_counter()
+            memory_ms = 0.0
+            build_agent_ms = 0.0
+            first_response_ms: float | None = None
+            build_meta: dict[str, Any] = {}
+
             # Set up context
             thread_id = self.get_thread_id(message)
             channel = self.__class__.__name__.lower().replace("channel", "")
@@ -303,8 +445,10 @@ class BaseChannel(ABC):
             logger.info(f"{ctx_system} set thread_id context")
 
             # Retrieve relevant memories and inject into message
+            memory_start = time.perf_counter()
             memories = self._get_relevant_memories(thread_id, message.content)
             enhanced_content = self._inject_memories(message.content, memories)
+            memory_ms = (time.perf_counter() - memory_start) * 1000.0
             if message.conversation_id in self._interrupted_chats:
                 enhanced_content = (
                     "[Note] The previous run in this conversation was interrupted by the user.\n"
@@ -379,7 +523,14 @@ class BaseChannel(ABC):
             messages_sent = 0
             total_input_tokens = 0
             total_output_tokens = 0
-            request_agent = await self._build_request_agent(enhanced_content, message.conversation_id, thread_id)
+            embedded_seen: set[str] = set()
+            build_agent_start = time.perf_counter()
+            request_agent, build_meta = await self._build_request_agent(
+                enhanced_content,
+                message.conversation_id,
+                thread_id,
+            )
+            build_agent_ms = (time.perf_counter() - build_agent_start) * 1000.0
             async for event in request_agent.astream(state, config):
                 event_count += 1
                 if event_count <= 20:
@@ -407,6 +558,16 @@ class BaseChannel(ABC):
                 messages = self._extract_messages_from_event(event)
                 new_messages = self._get_new_ai_messages(messages, message.message_id)
                 for msg in new_messages:
+                    if isinstance(msg, AIMessage) and getattr(msg, "content", None):
+                        embedded_results = await self._execute_embedded_tool_calls(msg.content, embedded_seen)
+                        if embedded_results:
+                            for result_text in embedded_results:
+                                await self.send_message(message.conversation_id, result_text)
+                                messages_sent += 1
+                                if first_response_ms is None:
+                                    first_response_ms = (time.perf_counter() - request_start) * 1000.0
+                            continue
+
                     # Extract token usage from message if available
                     if hasattr(msg, 'usage_metadata') and msg.usage_metadata:
                         usage = msg.usage_metadata
@@ -421,6 +582,8 @@ class BaseChannel(ABC):
                     if isinstance(msg, AIMessage) and hasattr(msg, "content") and msg.content:
                         await self.send_message(message.conversation_id, msg.content)
                         messages_sent += 1
+                        if first_response_ms is None:
+                            first_response_ms = (time.perf_counter() - request_start) * 1000.0
 
                     # Log message if audit is enabled
                     if self.registry and (hasattr(msg, 'content') and msg.content or (hasattr(msg, 'tool_calls') and msg.tool_calls)):
@@ -459,6 +622,34 @@ class BaseChannel(ABC):
                 logger.info(f"{ctx_system} agent processing elapsed={agent_elapsed:.2f}s events={event_count} messages={messages_sent} tokens={total_input_tokens}+{total_output_tokens}={total_tokens}")
             else:
                 logger.info(f"{ctx_system} agent processing elapsed={agent_elapsed:.2f}s events={event_count} messages={messages_sent}")
+
+            # Stage timing instrumentation
+            model_ms = 0.0
+            tools_ms = 0.0
+            model_calls = 0
+            tool_calls = 0
+            try:
+                from executive_assistant.agent.status_middleware import pop_stage_timing
+
+                timing = pop_stage_timing(thread_id)
+                if timing:
+                    model_ms = float(timing.get("model_total_ms", 0.0))
+                    tools_ms = float(timing.get("tool_total_ms", 0.0))
+                    model_calls = int(timing.get("model_calls", 0))
+                    tool_calls = int(timing.get("tool_calls", 0))
+            except Exception:
+                pass
+
+            total_ms = (time.perf_counter() - request_start) * 1000.0
+            post_process_ms = max(total_ms - (memory_ms + build_agent_ms + model_ms + tools_ms), 0.0)
+            first_ms = first_response_ms if first_response_ms is not None else -1.0
+            logger.info(
+                f"{ctx_system} stage_timing_ms memory={memory_ms:.1f} build_agent={build_agent_ms:.1f} "
+                f"model={model_ms:.1f} tools={tools_ms:.1f} post_process={post_process_ms:.1f} "
+                f"first_response={first_ms:.1f} total={total_ms:.1f} model_calls={model_calls} "
+                f"tool_calls={tool_calls} tool_profile={build_meta.get('tool_profile', 'unknown')} "
+                f"agent_cache_hit={build_meta.get('cache_hit', False)} tools_count={build_meta.get('tools_count', -1)}"
+            )
             self._active_tasks.pop(message.conversation_id, None)
 
         except asyncio.CancelledError:
@@ -652,3 +843,162 @@ class BaseChannel(ABC):
             for msg in messages[last_human_index + 1 :]
             if isinstance(msg, AIMessage)
         ]
+
+    def _extract_embedded_tool_calls(self, content: str) -> list[dict[str, Any]]:
+        """Extract JSON tool calls from model text when structured tool-calls are missing."""
+        if not content:
+            return []
+
+        decoder = json.JSONDecoder()
+        calls: list[dict[str, Any]] = []
+
+        def _scan_json_objects(text: str) -> None:
+            idx = 0
+            while idx < len(text):
+                start = text.find("{", idx)
+                if start == -1:
+                    break
+                try:
+                    obj, end = decoder.raw_decode(text, start)
+                except json.JSONDecodeError:
+                    idx = start + 1
+                    continue
+                if isinstance(obj, dict):
+                    name = obj.get("name")
+                    arguments = obj.get("arguments", obj.get("args"))
+                    if isinstance(name, str) and isinstance(arguments, dict):
+                        calls.append({"name": name, "arguments": arguments})
+                idx = end
+
+        def _extract_attr(attrs_text: str, attr_name: str) -> str | None:
+            match = re.search(
+                rf"{re.escape(attr_name)}\s*=\s*(?:\"([^\"]*)\"|'([^']*)')",
+                attrs_text,
+                flags=re.IGNORECASE,
+            )
+            if not match:
+                return None
+            return html.unescape(match.group(1) or match.group(2) or "").strip()
+
+        def _coerce_xml_param_value(raw: str, string_hint: str | None) -> Any:
+            value = html.unescape(raw).strip()
+            if string_hint and string_hint.lower() == "true":
+                return value
+            lowered = value.lower()
+            if lowered == "true":
+                return True
+            if lowered == "false":
+                return False
+            if lowered in {"null", "none"}:
+                return None
+            if re.fullmatch(r"-?\d+", value):
+                try:
+                    return int(value)
+                except ValueError:
+                    return value
+            if re.fullmatch(r"-?\d+\.\d+", value):
+                try:
+                    return float(value)
+                except ValueError:
+                    return value
+            if (value.startswith("{") and value.endswith("}")) or (value.startswith("[") and value.endswith("]")):
+                try:
+                    return json.loads(value)
+                except json.JSONDecodeError:
+                    return value
+            return value
+
+        def _scan_xml_function_calls(text: str) -> None:
+            # DeepSeek-style fallback:
+            # <function_calls><invoke name="tool"><parameter name="x">1</parameter></invoke></function_calls>
+            xml_blocks = re.findall(
+                r"<function_calls>\s*(.*?)\s*</function_calls>",
+                text,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            for block in xml_blocks:
+                invoke_matches = re.finditer(
+                    r"<invoke\b([^>]*)>(.*?)</invoke>",
+                    block,
+                    flags=re.IGNORECASE | re.DOTALL,
+                )
+                for invoke_match in invoke_matches:
+                    invoke_attrs = invoke_match.group(1) or ""
+                    invoke_body = invoke_match.group(2) or ""
+                    tool_name = _extract_attr(invoke_attrs, "name")
+                    if not tool_name:
+                        continue
+                    args: dict[str, Any] = {}
+                    param_matches = re.finditer(
+                        r"<parameter\b([^>]*)>(.*?)</parameter>",
+                        invoke_body,
+                        flags=re.IGNORECASE | re.DOTALL,
+                    )
+                    for param_match in param_matches:
+                        param_attrs = param_match.group(1) or ""
+                        param_body = param_match.group(2) or ""
+                        arg_name = _extract_attr(param_attrs, "name")
+                        if not arg_name:
+                            continue
+                        string_hint = _extract_attr(param_attrs, "string")
+                        args[arg_name] = _coerce_xml_param_value(param_body, string_hint)
+                    calls.append({"name": tool_name, "arguments": args})
+
+        # 1) `<tools>...</tools>` blocks
+        blocks = re.findall(r"<tools>\s*(.*?)\s*</tools>", content, flags=re.IGNORECASE | re.DOTALL)
+        for block in blocks:
+            _scan_json_objects(block)
+
+        # 1b) `<function_calls>...</function_calls>` XML blocks
+        _scan_xml_function_calls(content)
+
+        # 2) fenced json code blocks
+        code_blocks = re.findall(r"```json\s*(.*?)\s*```", content, flags=re.IGNORECASE | re.DOTALL)
+        for block in code_blocks:
+            _scan_json_objects(block)
+
+        # 3) full content fallback (plain inline JSON snippets)
+        _scan_json_objects(content)
+
+        return calls
+
+    async def _execute_embedded_tool_calls(
+        self,
+        content: str,
+        seen_call_keys: set[str] | None = None,
+    ) -> list[str]:
+        """Execute embedded `<tools>` calls when model returns text instead of real tool calls."""
+        calls = self._extract_embedded_tool_calls(content)
+        if not calls:
+            return []
+
+        from executive_assistant.tools.registry import get_all_tools
+
+        tools = await get_all_tools()
+        tool_map = {getattr(t, "name", ""): t for t in tools}
+        outputs: list[str] = []
+
+        for call in calls:
+            name = str(call.get("name", "")).strip()
+            args = call.get("arguments", {})
+            if not isinstance(args, dict):
+                args = {}
+
+            key = json.dumps({"name": name, "arguments": args}, sort_keys=True)
+            if seen_call_keys is not None:
+                if key in seen_call_keys:
+                    continue
+                seen_call_keys.add(key)
+
+            tool = tool_map.get(name)
+            if tool is None:
+                outputs.append(f"Error: unknown tool '{name}'")
+                continue
+
+            try:
+                result = await tool.ainvoke(args)
+                outputs.append(str(result))
+            except Exception as e:
+                outputs.append(f"Error: tool '{name}' failed ({type(e).__name__}): {e}")
+
+        return outputs

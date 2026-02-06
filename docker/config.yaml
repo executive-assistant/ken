@@ -53,18 +53,17 @@ llm:
     fast_model: glm-4.7-flash
 
   ollama:
-    default_model: qwen3-next:80b-cloud
-    fast_model: qwen3-next:80b-cloud
+    default_model: deepseek-v3.2:cloud
+    fast_model: deepseek-v3.2:cloud
     mode: cloud # cloud or local
     cloud_url: "https://ollama.com"
     local_url: "http://localhost:11434"
     # Tool Calling Compatibility (Ollama Cloud models):
     # ✅ Compatible (JSON Schema supported):
     #   - deepseek-v3.1:671b-cloud (Recommended)
-    #   - glm-4.7:cloud, minimax-m2.1:cloud, gpt-oss:20b-cloud, qwen3-next:80b-cloud
-    # ❌ Incompatible (no JSON Schema support):
-    #   - kimi-k2.5:cloud (use native kimi provider instead)
-    #   - deepseek-v3.2:cloud (XML tool calling only, not compatible)
+    #   - glm-4.7:cloud, minimax-m2.1:cloud, gpt-oss:20b-cloud, qwen3-next:80b-cloud, kimi-k2.5:cloud
+    # ⚠️ Special format:
+    #   - deepseek-v3.2:cloud (XML <function_calls>; supported via channel compatibility parser)
 
   # Gemini (Google)
   gemini:

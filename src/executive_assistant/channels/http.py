@@ -498,12 +498,56 @@ class HttpChannel(BaseChannel):
 
         # Collect all messages from stream
         all_messages: list[BaseMessage] = []
-        request_agent = await self._build_request_agent(message.content, message.conversation_id)
+        embedded_seen: set[str] = set()
+        request_start = time.perf_counter()
+        build_start = time.perf_counter()
+        request_agent, build_meta = await self._build_request_agent(message.content, message.conversation_id)
+        build_agent_ms = (time.perf_counter() - build_start) * 1000.0
+        first_response_ms: float | None = None
 
         async for event in request_agent.astream(state, config):
             messages = self._extract_messages_from_event(event)
             new_messages = self._get_new_ai_messages(messages, message_id)
-            all_messages.extend(new_messages)
+            for msg in new_messages:
+                if isinstance(msg, AIMessage) and getattr(msg, "content", None):
+                    embedded_results = await self._execute_embedded_tool_calls(msg.content, embedded_seen)
+                    if embedded_results:
+                        all_messages.append(AIMessage(content="\n".join(embedded_results)))
+                        if first_response_ms is None:
+                            first_response_ms = (time.perf_counter() - request_start) * 1000.0
+                        continue
+                all_messages.append(msg)
+                if first_response_ms is None and getattr(msg, "content", None):
+                    first_response_ms = (time.perf_counter() - request_start) * 1000.0
+
+        thread_timing = None
+        try:
+            from executive_assistant.agent.status_middleware import pop_stage_timing
+
+            thread_timing = pop_stage_timing(thread_id)
+        except Exception:
+            thread_timing = None
+
+        model_ms = float((thread_timing or {}).get("model_total_ms", 0.0))
+        tools_ms = float((thread_timing or {}).get("tool_total_ms", 0.0))
+        total_ms = (time.perf_counter() - request_start) * 1000.0
+        first_ms = first_response_ms if first_response_ms is not None else -1.0
+        post_process_ms = max(total_ms - (build_agent_ms + model_ms + tools_ms), 0.0)
+        ctx_perf = format_log_context(
+            "system",
+            component="perf",
+            channel="http",
+            user=thread_id,
+            conversation=message.conversation_id,
+        )
+        logger.info(
+            f"{ctx_perf} stage_timing_ms build_agent={build_agent_ms:.1f} model={model_ms:.1f} "
+            f"tools={tools_ms:.1f} post_process={post_process_ms:.1f} first_response={first_ms:.1f} "
+            f"total={total_ms:.1f} model_calls={int((thread_timing or {}).get('model_calls', 0))} "
+            f"tool_calls={int((thread_timing or {}).get('tool_calls', 0))} "
+            f"tool_profile={build_meta.get('tool_profile', 'unknown')} "
+            f"agent_cache_hit={build_meta.get('cache_hit', False)} tools_count={build_meta.get('tools_count', -1)}"
+        )
 
         return all_messages
 
@@ -547,7 +591,12 @@ class HttpChannel(BaseChannel):
             "conversation_id": batch[-1].conversation_id,
         }
 
-        request_agent = await self._build_request_agent(batch[-1].content, batch[-1].conversation_id)
+        request_start = time.perf_counter()
+        build_start = time.perf_counter()
+        request_agent, build_meta = await self._build_request_agent(batch[-1].content, batch[-1].conversation_id)
+        build_agent_ms = (time.perf_counter() - build_start) * 1000.0
+        first_response_ms: float | None = None
+        embedded_seen: set[str] = set()
 
         # Token tracking
         total_input_tokens = 0
@@ -557,6 +606,20 @@ class HttpChannel(BaseChannel):
             msgs = self._extract_messages_from_event(event)
             new_messages = self._get_new_ai_messages(msgs, last_message_id) if last_message_id else []
             for msg in new_messages:
+                if isinstance(msg, AIMessage) and getattr(msg, "content", None):
+                    embedded_results = await self._execute_embedded_tool_calls(msg.content, embedded_seen)
+                    if embedded_results:
+                        for result_text in embedded_results:
+                            chunk = MessageChunk(
+                                content=result_text,
+                                role="assistant",
+                                done=False,
+                            )
+                            yield f"data: {chunk.model_dump_json()}\n\n"
+                            if first_response_ms is None:
+                                first_response_ms = (time.perf_counter() - request_start) * 1000.0
+                        continue
+
                 # Extract token usage from message if available
                 if hasattr(msg, 'usage_metadata') and msg.usage_metadata:
                     usage = msg.usage_metadata
@@ -573,6 +636,8 @@ class HttpChannel(BaseChannel):
                         done=False,
                     )
                     yield f"data: {chunk.model_dump_json()}\n\n"
+                    if first_response_ms is None:
+                        first_response_ms = (time.perf_counter() - request_start) * 1000.0
 
             queue = self._stream_queues.get(batch[-1].conversation_id)
             if queue:
@@ -587,12 +652,41 @@ class HttpChannel(BaseChannel):
 
         # Log total tokens (this executes when stream ends)
         total_tokens = total_input_tokens + total_output_tokens
-        thread_id = batch[-1].conversation_id if batch else "unknown"
-        ctx = format_log_context("message", channel="http", conversation=thread_id, type="token_usage")
+        conversation_id = batch[-1].conversation_id if batch else "unknown"
+        ctx = format_log_context("message", channel="http", conversation=conversation_id, type="token_usage")
         if total_tokens > 0:
             logger.info(f"{ctx} tokens={total_input_tokens}+{total_output_tokens}={total_tokens}")
         else:
             logger.debug(f"{ctx} no_token_metadata found total_input={total_input_tokens} total_output={total_output_tokens}")
+
+        thread_timing = None
+        try:
+            from executive_assistant.agent.status_middleware import pop_stage_timing
+
+            thread_timing = pop_stage_timing(thread_id)
+        except Exception:
+            thread_timing = None
+
+        model_ms = float((thread_timing or {}).get("model_total_ms", 0.0))
+        tools_ms = float((thread_timing or {}).get("tool_total_ms", 0.0))
+        total_ms = (time.perf_counter() - request_start) * 1000.0
+        post_process_ms = max(total_ms - (build_agent_ms + model_ms + tools_ms), 0.0)
+        first_ms = first_response_ms if first_response_ms is not None else -1.0
+        ctx_perf = format_log_context(
+            "system",
+            component="perf",
+            channel="http",
+            user=thread_id,
+            conversation=conversation_id,
+        )
+        logger.info(
+            f"{ctx_perf} stage_timing_ms build_agent={build_agent_ms:.1f} model={model_ms:.1f} "
+            f"tools={tools_ms:.1f} post_process={post_process_ms:.1f} first_response={first_ms:.1f} "
+            f"total={total_ms:.1f} model_calls={int((thread_timing or {}).get('model_calls', 0))} "
+            f"tool_calls={int((thread_timing or {}).get('tool_calls', 0))} "
+            f"tool_profile={build_meta.get('tool_profile', 'unknown')} "
+            f"agent_cache_hit={build_meta.get('cache_hit', False)} tools_count={build_meta.get('tools_count', -1)}"
+        )
 
     @staticmethod
     def get_thread_id(message: MessageFormat) -> str:

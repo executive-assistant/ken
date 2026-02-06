@@ -132,12 +132,22 @@ def disable_mcp_tools() -> str:
 def add_mcp_server(
     server_name: str,
     command: str,
+    arguments: list[str] | None = None,
     args: list[str] | None = None,
     env: dict[str, str] | None = None,
+    **extra: object,
 ) -> str:
     """Add a custom MCP server to admin config."""
     if not _ensure_admin():
         return "Admin access required."
+    # Some StructuredTool wrappers expose list args as `v__args`.
+    variadic_args = extra.get("v__args")
+    if isinstance(variadic_args, list):
+        resolved_args = variadic_args
+    else:
+        resolved_args = None
+    args = arguments if arguments is not None else args
+    args = args if args is not None else resolved_args
     config = load_mcp_config()
     config.setdefault("mcpServers", {})
     config["mcpServers"][server_name] = {

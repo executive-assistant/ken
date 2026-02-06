@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Test Google OAuth manager initialization."""
 
-import os
 import sys
+from pathlib import Path
 
-# Add src to path
-sys.path.insert(0, "src")
+# Add project src/ to path (works from any cwd)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 def test_oauth_manager():
     """Test Google OAuth manager can be instantiated."""

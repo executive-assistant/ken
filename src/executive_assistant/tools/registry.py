@@ -29,11 +29,16 @@ def _normalize_tool(tool):
 
 def _mcp_server_to_connection(server_config: dict) -> dict:
     if "command" in server_config:
+        env = dict(server_config.get("env") or {})
+        command = server_config.get("command")
+        # Avoid sandbox/home cache permission issues for uv/uvx-based MCP servers.
+        if command in {"uv", "uvx"}:
+            env.setdefault("UV_CACHE_DIR", ".uv-cache")
         return {
             "transport": "stdio",
-            "command": server_config.get("command"),
+            "command": command,
             "args": server_config.get("args", []),
-            "env": server_config.get("env"),
+            "env": env or None,
             "cwd": server_config.get("cwd"),
         }
     if "url" in server_config:
@@ -606,8 +611,11 @@ async def load_mcp_tools_tiered() -> list[BaseTool]:
 
         admin_config = load_mcp_config()
         admin_servers = admin_config.get("mcpServers", {})
+        admin_enabled = admin_config.get("mcpEnabled", False)
+        admin_mode = admin_config.get("loadMcpTools", "default")
+        admin_auto_load = admin_enabled and admin_mode == "default"
 
-        if admin_servers:
+        if admin_servers and admin_auto_load:
             # Only load admin tools that don't collide with user tools
             filtered_servers = {}
             for name, config in admin_servers.items():
@@ -628,6 +636,10 @@ async def load_mcp_tools_tiered() -> list[BaseTool]:
 
                 if admin_tools:
                     logger.debug(f"Loaded {len(admin_tools)} admin MCP tools (non-colliding)")
+        elif admin_servers and not admin_enabled:
+            logger.debug("Admin MCP config present but disabled (mcpEnabled=false); skipping admin MCP tool load")
+        elif admin_servers and admin_mode != "default":
+            logger.debug("Admin MCP config present with loadMcpTools=%s; skipping auto-load", admin_mode)
 
     except ImportError:
         print("Warning: langchain-mcp-adapters not installed. MCP tools unavailable.")
@@ -655,30 +667,41 @@ async def _load_mcp_servers(
     global _mcp_client_cache
 
     tools = []
-    connections = {}
 
     for server_name, server_config in servers.items():
         try:
             connection = _mcp_server_to_connection(server_config)
-            connections[server_name] = connection
         except Exception as e:
             print(f"Warning: Invalid MCP server config for '{server_name}' ({source}): {e}")
+            continue
 
-    if connections:
-        # Create cache key from server configurations
-        cache_key = f"{source}:{hashlib.sha256(json.dumps(connections, sort_keys=True).encode()).hexdigest()[:16]}"
+        # Cache one client per server so one bad server doesn't block all others.
+        cache_key = (
+            f"{source}:{server_name}:"
+            f"{hashlib.sha256(json.dumps(connection, sort_keys=True).encode()).hexdigest()[:16]}"
+        )
 
-        # Check cache first
         if cache_key not in _mcp_client_cache:
-            logger.debug(f"Creating new MCP client for {source} (cache miss: {cache_key})")
-            client = MultiServerMCPClient(connections=connections)
-            _mcp_client_cache[cache_key] = client
+            logger.debug("Creating new MCP client for %s/%s (cache miss: %s)", source, server_name, cache_key)
+            _mcp_client_cache[cache_key] = MultiServerMCPClient(
+                connections={server_name: connection}
+            )
         else:
-            logger.debug(f"Reusing cached MCP client for {source} (cache hit: {cache_key})")
-            client = _mcp_client_cache[cache_key]
+            logger.debug("Reusing cached MCP client for %s/%s (cache hit: %s)", source, server_name, cache_key)
 
-        server_tools = await client.get_tools()
-        tools.extend(server_tools)
+        client = _mcp_client_cache[cache_key]
+        try:
+            server_tools = await client.get_tools(server_name=server_name)
+            tools.extend(server_tools)
+        except Exception as e:
+            logger.warning(
+                "Failed to load MCP tools from %s/%s: %s. Skipping this server.",
+                source,
+                server_name,
+                e,
+            )
+            # Drop possibly-stale client so next call can rebuild it.
+            _mcp_client_cache.pop(cache_key, None)
 
     return tools
 

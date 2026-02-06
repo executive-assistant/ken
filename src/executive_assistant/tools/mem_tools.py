@@ -141,7 +141,11 @@ def forget_memory(memory_id: str) -> str:
         >>> forget_memory("abc-123")
         "Memory forgotten: abc-123"
     """
-    return delete_memory(memory_id)
+    storage = get_mem_storage()
+    success = storage.delete_memory(memory_id)
+    if success:
+        return f"Memory forgotten: {memory_id}"
+    return f"Memory not found: {memory_id}"
 
 
 @tool

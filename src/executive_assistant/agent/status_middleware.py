@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 # Thread-local storage for LLM timing (keyed by thread_id)
 _llm_timing_by_thread: dict[str, dict] = {}
+_stage_timing_by_thread: dict[str, dict[str, float | int]] = {}
 
 # Thread-local storage for middleware debug tracking
 # NOTE: No lock needed - relies on:
@@ -103,6 +104,11 @@ def record_llm_call(elapsed: float, tokens: dict | None = None) -> None:
     tracker.record_llm_call()
 
 
+def pop_stage_timing(thread_id: str) -> dict[str, float | int] | None:
+    """Pop per-run stage timing captured by StatusUpdateMiddleware."""
+    return _stage_timing_by_thread.pop(thread_id, None)
+
+
 class StatusUpdateMiddleware(AgentMiddleware):
     """
     Middleware that sends real-time status updates to users during agent execution.
@@ -138,6 +144,11 @@ class StatusUpdateMiddleware(AgentMiddleware):
         self.start_time: float | None = None
         self.last_status_time: float | None = None
         self.current_conversation_id: str | None = None
+        self.model_total_seconds: float = 0.0
+        self.model_call_count: int = 0
+        self.tool_total_seconds: float = 0.0
+        self.tool_call_count: int = 0
+        self._model_call_started_at: float | None = None
 
         # Middleware debug tracking
         self.middleware_debug: MiddlewareDebug | None = None
@@ -199,6 +210,11 @@ class StatusUpdateMiddleware(AgentMiddleware):
         self.tool_count = 0
         self.start_time = time.time()
         self.last_status_time = None
+        self.model_total_seconds = 0.0
+        self.model_call_count = 0
+        self.tool_total_seconds = 0.0
+        self.tool_call_count = 0
+        self._model_call_started_at = None
 
         # Prefer ContextVar thread_id; fall back to state/runtime config (tests/mocked)
         thread_id = get_thread_id()
@@ -264,6 +280,7 @@ class StatusUpdateMiddleware(AgentMiddleware):
         """
         if self.middleware_debug:
             self.middleware_debug.capture_before_model(state)
+        self._model_call_started_at = time.perf_counter()
         return None
 
     async def aafter_model(
@@ -277,9 +294,17 @@ class StatusUpdateMiddleware(AgentMiddleware):
         - Context editing (tool_uses reduction)
         """
         if not self.middleware_debug:
+            if self._model_call_started_at is not None:
+                self.model_total_seconds += time.perf_counter() - self._model_call_started_at
+                self.model_call_count += 1
+                self._model_call_started_at = None
             return None
 
         self.middleware_debug.capture_after_model(state)
+        if self._model_call_started_at is not None:
+            self.model_total_seconds += time.perf_counter() - self._model_call_started_at
+            self.model_call_count += 1
+            self._model_call_started_at = None
 
         # Check for summarization
         summary_result = self.middleware_debug.detect_summarization()
@@ -408,6 +433,8 @@ class StatusUpdateMiddleware(AgentMiddleware):
         try:
             result = await handler(request)
             elapsed = time.time() - tool_start
+            self.tool_total_seconds += elapsed
+            self.tool_call_count += 1
 
             self._log_debug(
                 "tool_complete",
@@ -418,6 +445,8 @@ class StatusUpdateMiddleware(AgentMiddleware):
 
         except Exception as e:
             elapsed = time.time() - tool_start
+            self.tool_total_seconds += elapsed
+            self.tool_call_count += 1
             error_msg = str(e)[:100]  # Truncate long errors
             self._log_debug(
                 "tool_error",
@@ -446,6 +475,12 @@ class StatusUpdateMiddleware(AgentMiddleware):
                 count = llm_info["count"]
                 llm_time = llm_info["total_time"]
                 llm_summary = f" | LLM: {count} call ({llm_time:.1f}s)"
+            _stage_timing_by_thread[thread_id] = {
+                "model_total_ms": round(self.model_total_seconds * 1000.0, 3),
+                "tool_total_ms": round(self.tool_total_seconds * 1000.0, 3),
+                "model_calls": self.model_call_count,
+                "tool_calls": self.tool_call_count,
+            }
 
         # Check for retries
         if self.retry_tracker:

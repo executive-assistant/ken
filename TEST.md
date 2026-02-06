@@ -1,40 +1,105 @@
-# Ken Executive Assistant Test Plan
+# Ken Executive Assistant Unified Test Plan
 
 **Last Updated:** 2026-02-06  
-**Purpose:** Practical, executable validation for local and CI-like runs against the real HTTP agent.
+**Purpose:** A single, deterministic scope that merges current release gates and legacy breadth coverage so agent reliability is assessed end-to-end.
 
-## 1) Coverage Summary
+## 1) Scope Principles
 
-| Area | Covered | Notes |
-|---|---|---|
-| Startup/config | Yes | Includes provider/mode preflight |
-| HTTP channel | Yes | `/health`, `/message`, non-streaming behavior |
-| Memory + context continuity | Yes | Multi-turn verification |
-| TDB/ADB/VDB/File tool families | Yes | Behavior-level checks via agent |
-| Reminders + scheduler | Yes | Create/list + scheduler sanity |
-| Proactive check-in | Yes | Enable/show/test and scheduler path verification |
-| Error handling | Yes | Invalid requests and graceful failures |
-| Isolation | Yes | Cross-user/thread separation |
-| Security boundaries | Partial | No auth-hardening tests (frontend-owned by design) |
-| Load/perf | Smoke only | Latency and basic concurrency, not full benchmark |
+1. Scope must include all critical capability areas from both prior plans:
+- Core runtime reliability (`S1`-`R2`)
+- Weekly resilience (`W1`-`W6`)
+- Persona/onboarding behavior
+- Skills/instinct/profile discovery and adaptation
+- Learning-pattern tools (Teach/Verify, Reflect/Improve, Predict/Prepare)
+- App-build and cross-tool workflows
+- Full registered-tool execution coverage (all runtime tools)
+
+2. Assertions must be deterministic whenever possible:
+- Prefer DB/file/state verification over checking natural-language wording.
+- Keep text-based assertions only for unavoidable conversational outcomes.
+
+3. One source of truth:
+- This file defines required test scope.
+- `TEST_REPORT.md` must report results against this exact scope.
 
 ---
 
-## 2) Preflight (Required)
+## 2) Execution Profiles
+
+### Profile `core` (Release Blocking)
+Run on every change.
+
+- Startup and API health: `S1`-`S3`
+- Persistence/context: `P1`-`P2`
+- Tool family behavior: `T1`-`T5`
+- Check-in/scheduler commands: `C1`-`C3`
+- Error handling: `E1`-`E3`
+- Isolation: `I1`-`I2`
+- Streaming contract: `R1`-`R2`
+
+### Profile `weekly` (Stability and Resilience)
+Run weekly (or before major release).
+
+- `W1A`-`W1D`: decomposed multi-step workflow reliability
+- `W2`: transient/invalid web dependency behavior
+- `W3`: recurring reminders and recurrence metadata
+- `W4`: proactive check-in/scheduler path verification
+- `W5`: parallel conversation/thread isolation under concurrency
+- `W6_PRE` + `W6`: persistence across process restart
+
+### Profile `extended` (Breadth Coverage)
+Run nightly or pre-release.
+
+- Persona and onboarding matrix (16 personas)
+- Skills/instincts/profiles discoverability
+- Learning tool flows: `learning_stats`, `verify_preferences`, `show_patterns`
+- Adhoc app-build style workflows (cross-tool artifact creation)
+
+### Profile `tool-e2e` (Registry Completeness)
+Run nightly or pre-release.
+
+- `Z1`: invoke every runtime-registered tool once (currently `117` tools)
+- `Z2`: enforce non-empty, unique tool names in registry
+- `Z3`: embedded tool-call parsing coverage for JSON `<tools>` and XML `<function_calls>` formats
+
+### Profile `all`
+Run `core + weekly + extended + tool-e2e`.
+
+---
+
+## 3) Deterministic Assertion Rules
+
+1. Prefer artifact assertions:
+- SQLite rows (`tdb/db.sqlite`), file existence/content under `data/users/...`, reminder/check-in persisted state.
+
+2. Reminder assertions must prove real persistence:
+- Do not accept assistant text alone.
+- Require `reminders` table row existence for the active `thread_id` and `reminder_list` visibility.
+- Include natural-language time phrasing coverage (for example `11.22pm tonight`).
+
+2. Use conversation-text assertions only when artifact checks are not available:
+- Role acknowledgment, graceful error messaging, SSE envelope markers.
+
+3. Use isolated run IDs per execution:
+- Conversation IDs are suffixed with a run timestamp to prevent cross-run contamination.
+
+4. Restart tests:
+- `W6` can be automated only when an explicit restart command is provided.
+- Without restart command, mark `W6` as `SKIP` (not `PASS`).
+
+---
+
+## 4) Preflight (Required)
 
 1. Start PostgreSQL:
 ```bash
 docker compose -f docker/docker-compose.yml up -d postgres
 ```
 
-2. Verify Ollama Cloud config from `.env` (no key printing):
+2. Verify Ollama Cloud mode and models from `docker/.env`:
 ```bash
 rg -n "^(DEFAULT_LLM_PROVIDER|OLLAMA_MODE|OLLAMA_DEFAULT_MODEL|OLLAMA_FAST_MODEL)=" docker/.env
 ```
-Expected:
-- `DEFAULT_LLM_PROVIDER=ollama`
-- `OLLAMA_MODE=cloud`
-- model names ending in `:cloud` (or your intended cloud model IDs)
 
 3. Start assistant in HTTP mode:
 ```bash
@@ -45,109 +110,92 @@ EXECUTIVE_ASSISTANT_CHANNELS=http UV_CACHE_DIR=.uv-cache uv run executive_assist
 ```bash
 curl -sS http://127.0.0.1:8000/health
 ```
-Expected: `{"status":"healthy",...}`
 
 ---
 
-## 3) Test Harness
+## 5) Runner Commands
 
-Use this helper for repeatable HTTP calls:
+Use deterministic runner:
 
 ```bash
-agent() {
-  local user_id="$1"
-  local conv_id="$2"
-  local prompt="$3"
-  curl -sS -X POST http://127.0.0.1:8000/message \
-    -H 'Content-Type: application/json' \
-    -d "{\"user_id\":\"${user_id}\",\"conversation_id\":\"${conv_id}\",\"content\":\"${prompt}\",\"stream\":false}"
-}
+scripts/run_http_scope_tests.sh --profile core
+scripts/run_http_scope_tests.sh --profile weekly
+scripts/run_http_scope_tests.sh --profile extended
+scripts/run_http_scope_tests.sh --profile all
+uv run pytest -q tests/test_all_tools_end_to_end.py
+uv run pytest -q tests/test_embedded_tool_call_parsing.py
+```
+
+Restart-enabled weekly run:
+
+```bash
+scripts/run_http_scope_tests.sh \
+  --profile weekly \
+  --allow-restart \
+  --restart-cmd 'set -a; source docker/.env; set +a; EXECUTIVE_ASSISTANT_CHANNELS=http UV_CACHE_DIR=.uv-cache .venv/bin/executive_assistant >/tmp/ken_http.log 2>&1 &'
+```
+
+Optional flags:
+
+```bash
+--base-url http://127.0.0.1:8000
+--output /tmp/ken_scope_test_results.txt
 ```
 
 ---
 
-## 4) Must-Pass Smoke Suite (Run Every Change)
+## 6) Capability Mapping (Legacy Coverage Included)
 
-### A. Startup and Core Chat
-
-1. `S1` Health endpoint returns healthy.
-2. `S2` Determinism sanity: ask `Reply with exactly: pong` and verify `pong` appears.
-3. `S3` Non-empty response for normal query (`What can you help with?`).
-
-### B. Persistence and Context
-
-4. `P1` Same conversation remembers prior statement:
-- Turn 1: `My project codename is Atlas42.`
-- Turn 2: `What is my project codename?`
-- Expect mention of `Atlas42`.
-
-5. `P2` Different conversation for same user should not blindly reuse prior context unless stored memory is explicitly used.
-
-### C. Tooling Families (Behavior-Level)
-
-6. `T1` TDB: ask assistant to create a todo table, insert one row, and query it. Verify returned output includes inserted value.
-7. `T2` File tools: ask assistant to write `notes/test.txt` with known content, then read it back. Verify round-trip text.
-8. `T3` Memory: ask assistant to remember a preference and then retrieve it in a follow-up turn.
-9. `T4` Time tools: ask current UTC time/date; verify non-empty, plausible timestamp/date.
-10. `T5` Reminder: set a reminder and list reminders; verify created item appears.
-
-### D. Scheduler and Check-in
-
-11. `C1` `checkin_show()` returns config.
-12. `C2` enable/check schedule changes (`checkin_enable`, `checkin_schedule`, `checkin_hours`).
-13. `C3` `checkin_test()` runs without exception and returns either findings or explicit "nothing to report".
-
-### E. Error Handling
-
-14. `E1` Invalid request body (missing `content`) returns HTTP validation error.
-15. `E2` Nonsensical/invalid DB request produces graceful error text, not server crash.
-16. `E3` Unknown file read returns clear "not found" style response.
-
-### F. Isolation
-
-17. `I1` user `u_a` creates private data.
-18. `I2` user `u_b` asks for `u_a` private item; should not directly expose it.
-
-### G. Streaming Contract
-
-19. `R1` `stream=true` returns SSE chunks.
-20. `R2` Stream ends with done marker.
+| Capability Area | Included in Unified Scope | Profile |
+|---|---|---|
+| HTTP startup and message flow | Yes | `core` |
+| Memory/context continuity | Yes | `core`, `extended` |
+| Tool families (TDB/ADB/VDB/file/reminders/time) | Yes | `core`, `extended` |
+| Proactive check-in and scheduler | Yes | `core`, `weekly` |
+| Streaming semantics | Yes | `core` |
+| Error handling | Yes | `core` |
+| Cross-user/thread isolation | Yes | `core`, `weekly` |
+| Multi-step workflows | Yes (decomposed + integrated behavior) | `weekly`, `extended` |
+| Persona onboarding matrix | Yes | `extended` |
+| Skills/instinct/profile flows | Yes | `extended` |
+| Learning pattern tools | Yes | `extended` |
+| Adhoc app-build scenarios | Yes | `extended` |
+| Full runtime tool inventory (117 tools) | Yes | `tool-e2e` |
+| Restart persistence | Yes | `weekly` |
 
 ---
 
-## 5) Weekly Regression Suite
-
-Run smoke + these deeper scenarios weekly:
-
-1. Multi-step workflow requiring >3 tools in one request.
-2. Retry behavior on transient web/tool failures.
-3. Reminder recurrence creation + next-occurrence verification.
-4. Check-in proactive path:
-- ensure a user has persisted checkin config
-- wait scheduler tick
-- verify check-in notification artifact/log path.
-5. Thread isolation under parallel requests (>=5 concurrent users).
-6. Restart persistence test (state and data survive process restart).
-
----
-
-## 6) Acceptance Gates
+## 7) Acceptance Gates
 
 Release candidate is acceptable when:
 
-1. All 20 smoke tests pass.
-2. No unhandled exceptions in server logs during run.
-3. Check-in commands and scheduler path complete without crash.
-4. Ollama Cloud provider is active (validated at startup log).
+1. `core` profile has zero failures.
+2. `weekly` profile has zero failures for enabled checks.
+3. If `W6` restart automation is not enabled, report `W6` explicitly as `SKIP` with reason.
+4. No unhandled exceptions in server logs during executed profiles.
+5. LLM provider/mode in use is recorded in report metadata.
+6. `tool-e2e` profile passes (or failures are explicitly documented with per-tool reasons).
 
 ---
 
-## 7) Reporting Template
+## 8) Reporting Contract (`TEST_REPORT.md`)
 
-Record results in `TEST_REPORT.md` using:
+Each report must include:
 
-- Environment (commit, model, channel, date/time)
-- Smoke suite pass/fail by test ID
-- Weekly suite pass/fail (if run)
-- Known issues with reproduction prompt(s)
-- Final verdict (`PASS`, `PASS WITH RISKS`, `FAIL`)
+1. Environment metadata:
+- Date/time (UTC and local)
+- Commit SHA
+- Model/provider mode (for example, `ollama cloud`)
+- Channel and base URL
+
+2. Profile-level summary:
+- `core`, `weekly`, `extended` run status and totals (`PASS/FAIL/SKIP`)
+
+3. Case-level results:
+- Each case ID with status and concise failure reason/repro prompt
+
+4. Known issues and risks:
+- Open defects, flaky cases, and mitigation
+
+5. Final verdict:
+- `PASS`, `PASS WITH RISKS`, or `FAIL`

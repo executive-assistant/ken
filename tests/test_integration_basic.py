@@ -4,8 +4,36 @@ These tests verify that tools work correctly when called through the agent,
 which is how they're actually used in production.
 """
 
+import asyncio
+import uuid
+
+import asyncpg
 import pytest
 import httpx
+
+from executive_assistant.config import settings
+
+
+def _pg_count_reminders(thread_id: str, message_substr: str) -> int:
+    async def _run() -> int:
+        conn = await asyncpg.connect(settings.POSTGRES_URL)
+        try:
+            return int(
+                await conn.fetchval(
+                    """
+                    SELECT COUNT(*)
+                    FROM reminders
+                    WHERE thread_id = $1
+                      AND message ILIKE $2
+                    """,
+                    thread_id,
+                    f"%{message_substr}%",
+                )
+            )
+        finally:
+            await conn.close()
+
+    return asyncio.run(_run())
 
 
 @pytest.fixture(scope="module")
@@ -116,17 +144,40 @@ class TestReminderToolsIntegration:
     """Integration tests for Reminder tools via HTTP API."""
 
     def test_reminder_set_and_list(self, client, base_url):
-        """Test setting and listing reminders via HTTP API."""
-        response = client.post(
+        """Reminder set must persist to DB and show up in list."""
+        reminder_message = f"test_integration_reminder_{uuid.uuid4().hex[:8]}"
+        conversation_id = f"test_reminder_integration_{uuid.uuid4().hex[:8]}"
+
+        set_response = client.post(
             f"{base_url}/message",
             json={
-                "content": "Set a reminder for 'Test integration' in 2 minutes. Then list all pending reminders.",
+                "content": f"Set a reminder in 10 minutes with message {reminder_message}",
                 "user_id": "test_reminder_integration",
+                "conversation_id": conversation_id,
                 "stream": False
             }
         )
 
-        assert response.status_code == 200
+        assert set_response.status_code == 200
+        set_text = str(set_response.json())
+        assert "error:" not in set_text.lower()
+
+        thread_id = f"http:{conversation_id}"
+        persisted = _pg_count_reminders(thread_id, reminder_message)
+        assert persisted >= 1
+
+        list_response = client.post(
+            f"{base_url}/message",
+            json={
+                "content": "List my reminders",
+                "user_id": "test_reminder_integration",
+                "conversation_id": conversation_id,
+                "stream": False,
+            },
+        )
+        assert list_response.status_code == 200
+        list_text = str(list_response.json())
+        assert reminder_message.lower() in list_text.lower()
 
 
 class TestMemoryToolsIntegration:

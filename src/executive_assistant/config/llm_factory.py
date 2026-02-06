@@ -42,12 +42,12 @@ MODEL_PATTERNS = {
 # Ollama Cloud models that do NOT support JSON Schema for tool calling
 # These models will fail when bind_tools() is called with JSON Schema format
 OLLAMA_INCOMPATIBLE_MODELS = {
-    "kimi-k2.5:cloud": "JSON Schema not supported - use native Kimi provider instead",
-    "deepseek-v3.2:cloud": "XML tool calling only - not compatible with LangChain bind_tools()",
+    "deepseek-v3.2:cloud": "Uses XML tool-calling format. Raw LangChain bind_tools() won't populate tool_calls without compatibility parsing.",
 }
 
 # Ollama Cloud models with verified JSON Schema tool calling support
 OLLAMA_COMPATIBLE_MODELS = {
+    "kimi-k2.5:cloud": "Verified in runtime probes - returns structured tool_calls",
     "deepseek-v3.1:671b-cloud": "Recommended - full JSON Schema support",
     "glm-4.7:cloud": "Good - JSON Schema supported",
     "minimax-m2.1:cloud": "Good - JSON Schema supported",

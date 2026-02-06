@@ -47,7 +47,7 @@ def _ensure_thread_id() -> str | None:
 # ====================================================================================
 
 @tool
-def verify_preferences() -> str:
+async def verify_preferences() -> str:
     """Verify and confirm learned preferences.
 
     Shows pending learning verifications and allows you to confirm
@@ -63,7 +63,7 @@ def verify_preferences() -> str:
 No active conversation context found. Please start a conversation first."""
 
     try:
-        pending = get_pending_verifications(thread_id)
+        pending = await get_pending_verifications(thread_id)
 
         if not pending:
             return """✅ No pending verifications!

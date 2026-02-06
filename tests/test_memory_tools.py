@@ -15,7 +15,8 @@ This test suite covers all 10 Memory tools:
 
 import pytest
 from datetime import datetime, timezone, timedelta
-from typing import Generator
+from typing import Any, Generator
+from uuid import uuid4
 
 from executive_assistant.storage.thread_storage import set_thread_id
 from executive_assistant.tools.mem_tools import (
@@ -32,14 +33,46 @@ from executive_assistant.tools.mem_tools import (
 )
 
 
+class _ToolAdapter:
+    """Allow legacy callable style while routing through StructuredTool.invoke."""
+
+    def __init__(self, tool: Any) -> None:
+        self._tool = tool
+
+    def __call__(self, **kwargs: Any) -> Any:
+        return self._tool.invoke(kwargs)
+
+    def invoke(self, payload: dict[str, Any]) -> Any:
+        return self._tool.invoke(payload)
+
+    async def ainvoke(self, payload: dict[str, Any]) -> Any:
+        return await self._tool.ainvoke(payload)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._tool, name)
+
+
+create_memory = _ToolAdapter(create_memory)
+update_memory = _ToolAdapter(update_memory)
+delete_memory = _ToolAdapter(delete_memory)
+forget_memory = _ToolAdapter(forget_memory)
+list_memories = _ToolAdapter(list_memories)
+search_memories = _ToolAdapter(search_memories)
+get_memory_by_key = _ToolAdapter(get_memory_by_key)
+normalize_or_create_memory = _ToolAdapter(normalize_or_create_memory)
+get_memory_at_time = _ToolAdapter(get_memory_at_time)
+get_memory_history = _ToolAdapter(get_memory_history)
+
+
 # =============================================================================
 # Fixtures
 # =============================================================================
 
 @pytest.fixture
-def test_thread_id() -> str:
-    """Provide a test thread ID for isolated storage."""
-    return "test_memory_tools"
+def test_thread_id(request: pytest.FixtureRequest) -> str:
+    """Provide a per-test thread ID for isolated storage."""
+    safe_node = request.node.nodeid.replace("/", "_").replace("::", "_")
+    return f"test_memory_tools_{safe_node}_{uuid4().hex[:8]}"
 
 
 @pytest.fixture
@@ -47,7 +80,8 @@ def setup_thread_context(test_thread_id: str) -> Generator[None, None, None]:
     """Set up thread context for memory operations."""
     set_thread_id(test_thread_id)
     yield
-    # Cleanup happens automatically via test isolation
+    # Reset to avoid accidental leakage into unrelated tests.
+    set_thread_id("default")
 
 
 # =============================================================================
@@ -121,7 +155,7 @@ class TestUpdateMemory:
         )
 
         # Should handle gracefully
-        assert "not found" in result.lower() or "does not exist" in result.lower()
+        assert "not found" in result.lower() or "does not exist" in result.lower() or "no memory found" in result.lower()
 
     def test_update_memory_type(
         self, setup_thread_context: None
@@ -158,7 +192,7 @@ class TestDeleteMemory:
         result = delete_memory(memory_id="nonexistent_id")
 
         # Should handle gracefully
-        assert "not found" in result.lower() or "does not exist" in result.lower()
+        assert "not found" in result.lower() or "does not exist" in result.lower() or "no memory found" in result.lower()
 
 
 # =============================================================================
@@ -175,7 +209,7 @@ class TestForgetMemory:
         result = forget_memory(memory_id="test_id")
 
         # Should behave same as delete_memory
-        assert "forgotten" in result.lower() or "deleted" in result.lower() or "not found" in result.lower()
+        assert "forgotten" in result.lower() or "deleted" in result.lower() or "not found" in result.lower() or "no memory found" in result.lower()
 
 
 # =============================================================================
@@ -221,10 +255,11 @@ class TestListMemories:
         self, setup_thread_context: None
     ) -> None:
         """Test listing only active memories."""
+        create_memory(content="Active memory sample", memory_type="fact")
         result = list_memories(status="active")
 
         # Should only return active memories
-        assert "active" in result.lower() or "memory" in result.lower()
+        assert "active memory sample" in result.lower() or "id:" in result.lower()
 
 
 # =============================================================================
@@ -266,7 +301,7 @@ class TestSearchMemories:
         result = search_memories(query="nonexistent_keyword_xyz", limit=5)
 
         # Should handle no results gracefully
-        assert "no memories" in result.lower() or "not found" in result.lower() or len(result) == 0
+        assert "no memories" in result.lower() or "not found" in result.lower() or "no memory found" in result.lower() or len(result) == 0
 
 
 # =============================================================================
@@ -298,7 +333,7 @@ class TestGetMemoryByKey:
         result = get_memory_by_key(key="nonexistent_key")
 
         # Should handle gracefully
-        assert "not found" in result.lower() or "does not exist" in result.lower()
+        assert "not found" in result.lower() or "does not exist" in result.lower() or "no memory found" in result.lower()
 
 
 # =============================================================================
@@ -363,7 +398,7 @@ class TestMemoryWorkflows:
 
         # 3. List memories
         result = list_memories()
-        assert "memory" in result.lower()
+        assert "test lifecycle" in result.lower() or "id:" in result.lower()
 
         # 4. Delete would require memory_id
         # Note: Full test would require parsing ID from results
@@ -435,7 +470,7 @@ class TestMemoryWorkflows:
         # Memory should not exist in different thread
         result = get_memory_by_key(key="secret")
         assert "thread 1" not in result.lower()
-        assert "not found" in result.lower() or "does not exist" in result.lower()
+        assert "not found" in result.lower() or "does not exist" in result.lower() or "no memory found" in result.lower()
 
     def test_memory_update_workflow(
         self, setup_thread_context: None
@@ -451,7 +486,8 @@ class TestMemoryWorkflows:
         # Update using normalize_or_create
         result = normalize_or_create_memory(
             key="location",
-            content="User lives in San Francisco"
+            content="User lives in San Francisco",
+            memory_type="fact",
         )
         assert "updated" in result.lower()
 
@@ -496,6 +532,7 @@ class TestGetMemoryAtTime:
             memory_type="fact",
             key="location"
         )
+        created_time = datetime.now(timezone.utc).isoformat()
 
         # Wait a moment (ensure timestamp difference)
         import time
@@ -504,14 +541,12 @@ class TestGetMemoryAtTime:
         # Update memory (creates new version)
         normalize_or_create_memory(
             key="location",
-            content="User lives in Tokyo"
+            content="User lives in Tokyo",
+            memory_type="fact",
         )
 
         # Query at time before update should return Sydney
-        from datetime import datetime, timezone, timedelta
-        past_time = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
-
-        result = get_memory_at_time(key="location", time=past_time)
+        result = get_memory_at_time(key="location", time=created_time)
         assert "sydney" in result.lower()
         assert "tokyo" not in result.lower()
 
@@ -541,7 +576,7 @@ class TestGetMemoryAtTime:
         now = datetime.now(timezone.utc).isoformat()
 
         result = get_memory_at_time(key="nonexistent_key", time=now)
-        assert "not found" in result.lower()
+        assert "not found" in result.lower() or "no memory found" in result.lower()
 
     def test_temporal_workflow_sydney_to_tokyo(
         self, setup_thread_context: None
@@ -555,6 +590,7 @@ class TestGetMemoryAtTime:
             memory_type="fact",
             key="location"
         )
+        created_time = datetime.now(timezone.utc).isoformat()
 
         # Verify current location is Sydney
         result = get_memory_by_key(key="location")
@@ -566,7 +602,8 @@ class TestGetMemoryAtTime:
 
         normalize_or_create_memory(
             key="location",
-            content="User lives in Tokyo"
+            content="User lives in Tokyo",
+            memory_type="fact",
         )
 
         # Verify current location is now Tokyo
@@ -574,8 +611,7 @@ class TestGetMemoryAtTime:
         assert "tokyo" in result.lower()
 
         # Query past location should show Sydney
-        past_time = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
-        result = get_memory_at_time(key="location", time=past_time)
+        result = get_memory_at_time(key="location", time=created_time)
         assert "sydney" in result.lower()
 
 
@@ -632,7 +668,7 @@ class TestGetMemoryHistory:
     ) -> None:
         """Test getting history of a key that doesn't exist."""
         result = get_memory_history(key="nonexistent_key")
-        assert "not found" in result.lower() or "no memory history" in result.lower()
+        assert "not found" in result.lower() or "no memory history" in result.lower() or "no memory found" in result.lower()
 
     def test_multiple_updates_history(
         self, setup_thread_context: None
@@ -696,13 +732,15 @@ class TestTemporalMemoryWorkflows:
             memory_type="preference",
             key="language_preference"
         )
+        created_time = datetime.now(timezone.utc).isoformat()
 
         # 2. Update to create new version
         import time
         time.sleep(0.1)
         normalize_or_create_memory(
             key="language_preference",
-            content="User prefers Rust"
+            content="User prefers Rust",
+            memory_type="preference",
         )
 
         # 3. Verify current state
@@ -717,8 +755,7 @@ class TestTemporalMemoryWorkflows:
         assert "rust" in history.lower()
 
         # 5. Query historical state
-        past_time = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
-        historical = get_memory_at_time(key="language_preference", time=past_time)
+        historical = get_memory_at_time(key="language_preference", time=created_time)
         assert "python" in historical.lower()
 
     def test_facts_change_over_time(
@@ -740,7 +777,8 @@ class TestTemporalMemoryWorkflows:
         # Promotion
         normalize_or_create_memory(
             key="job_title",
-            content="User works at Company A as Senior Engineer"
+            content="User works at Company A as Senior Engineer",
+            memory_type="fact",
         )
 
         time.sleep(0.1)
@@ -748,7 +786,8 @@ class TestTemporalMemoryWorkflows:
         # Job change
         normalize_or_create_memory(
             key="job_title",
-            content="User works at Company B as Tech Lead"
+            content="User works at Company B as Tech Lead",
+            memory_type="fact",
         )
 
         # Current job should be Company B

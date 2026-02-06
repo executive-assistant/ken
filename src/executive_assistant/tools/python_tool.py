@@ -317,46 +317,49 @@ def _setup_safe_globals():
     return safe_globals
 
 
-def _execute_code_in_subprocess(code: str, safe_globals: dict, timeout: int) -> tuple[bool, str]:
+def _python_exec_target(code_str: str, thread_id: str | None, result_queue) -> None:
+    """Execute sandboxed code in a child process and push result to queue."""
+    import io
+    import sys
+
+    from executive_assistant.storage.thread_storage import clear_thread_id, set_thread_id
+
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        if thread_id:
+            set_thread_id(thread_id)
+        safe_globals = _setup_safe_globals()
+        exec(code_str, safe_globals)
+        result_queue.put((True, sys.stdout.getvalue()))
+    except Exception as e:
+        result_queue.put((False, f"{type(e).__name__}: {e}"))
+    finally:
+        clear_thread_id()
+        sys.stdout = old_stdout
+
+
+def _execute_code_in_subprocess(code: str, timeout: int) -> tuple[bool, str]:
     """Execute code in a subprocess for cross-platform timeout support.
     
     Args:
         code: Python code to execute
-        safe_globals: Safe globals dictionary
         timeout: Timeout in seconds
         
     Returns:
         Tuple of (success: bool, output_or_error: str)
     """
     import multiprocessing
-    import pickle
-    
-    def target(code_str: str, globals_dict: dict, result_queue: multiprocessing.Queue):
-        """Target function to run in subprocess."""
-        import io
-        import sys
-        
-        old_stdout = sys.stdout
-        sys.stdout = io.StringIO()
-        
-        try:
-            # Reconstruct safe globals (can't pickle modules)
-            exec(code_str, globals_dict)
-            output = sys.stdout.getvalue()
-            result_queue.put((True, output))
-        except Exception as e:
-            error_msg = f"{type(e).__name__}: {e}"
-            result_queue.put((False, error_msg))
-        finally:
-            sys.stdout = old_stdout
-    
+    from executive_assistant.storage.thread_storage import get_thread_id
+
     # Use a queue to get results from subprocess
     result_queue = multiprocessing.Queue()
-    
+    current_thread_id = get_thread_id()
+
     # Create and start subprocess
     process = multiprocessing.Process(
-        target=target,
-        args=(code, safe_globals, result_queue)
+        target=_python_exec_target,
+        args=(code, current_thread_id, result_queue),
     )
     
     process.start()
@@ -453,7 +456,7 @@ def execute_python(code: str) -> str:
         if use_subprocess:
             # Use subprocess for Windows compatibility
             success, result = _execute_code_in_subprocess(
-                code, safe_globals, EXECUTION_TIMEOUT_SECONDS
+                code, EXECUTION_TIMEOUT_SECONDS
             )
             return result if result else "Code executed successfully (no output)"
         else:

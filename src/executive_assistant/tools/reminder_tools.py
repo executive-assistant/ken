@@ -5,14 +5,14 @@ Uses dateparser for flexible natural language date/time parsing.
 """
 
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from langchain_core.tools import tool
 import dateparser
 
 from executive_assistant.config.settings import settings
-from executive_assistant.storage.db_storage import get_thread_id
+from executive_assistant.storage.thread_storage import get_thread_id
 from executive_assistant.storage.reminder import ReminderStorage, get_reminder_storage
 from executive_assistant.storage.meta_registry import record_reminder_count
 
@@ -30,6 +30,126 @@ async def _refresh_reminder_meta(thread_id: str) -> None:
         record_reminder_count(thread_id, len(reminders))
     except Exception:
         return
+
+
+def _normalize_time_expression(time_str: str) -> str:
+    """Normalize common user-entered time variants before parsing."""
+    normalized = time_str.strip()
+    # Accept dotted times like "11.22pm tonight" -> "11:22pm tonight"
+    normalized = re.sub(
+        r"\b(\d{1,2})\.(\d{2})(\s*[ap]m\b)?",
+        lambda m: f"{m.group(1)}:{m.group(2)}{m.group(3) or ''}",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    # Common chat phrasing variants for "tonight".
+    normalized = re.sub(
+        r"^\s*(\d{1,2}:\d{2}\s*[ap]m)\s+tonight\s*$",
+        r"today at \1",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    normalized = re.sub(
+        r"^\s*tonight(?:\s+at)?\s+(\d{1,2}:\d{2}\s*[ap]m)\s*$",
+        r"today at \1",
+        normalized,
+        flags=re.IGNORECASE,
+    )
+    return normalized
+
+
+def _has_explicit_date_context(time_str: str) -> bool:
+    """Return True when expression includes date-like context words."""
+    lowered = time_str.lower()
+    date_keywords = {
+        "today", "tonight", "tomorrow", "yesterday", "next", "last", "in",
+        "week", "month", "year", "monday", "tuesday", "wednesday",
+        "thursday", "friday", "saturday", "sunday", "jan", "feb",
+        "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct",
+        "nov", "dec", "-", "/",
+    }
+    return any(word in lowered for word in date_keywords)
+
+
+def _looks_like_time_only(time_str: str) -> bool:
+    """Return True when expression is a time without explicit date context."""
+    return bool(re.match(r"^(at\s+)?\d{1,2}(:\d{2})?\s*(am|pm)?$", time_str.strip(), flags=re.IGNORECASE))
+
+
+def _adjust_time_only_to_future(parsed: datetime, now: datetime, raw_time: str) -> datetime:
+    """If user gave only a time and it already passed, roll forward one day."""
+    if parsed < now and not _has_explicit_date_context(raw_time) and _looks_like_time_only(raw_time):
+        return parsed + timedelta(days=1)
+    return parsed
+
+
+def _align_datetime_timezone(parsed: datetime, now: datetime) -> datetime:
+    """Align parsed timezone awareness with `now` to avoid naive/aware comparisons."""
+    if now.tzinfo and parsed.tzinfo is None:
+        return parsed.replace(tzinfo=now.tzinfo)
+    if not now.tzinfo and parsed.tzinfo:
+        return parsed.replace(tzinfo=None)
+    return parsed
+
+
+def _to_storage_datetime(parsed: datetime) -> datetime:
+    """Convert parsed datetimes into naive local time for DB storage.
+
+    Reminders table currently uses TIMESTAMP (no tz). Normalize aware datetimes
+    to local naive to avoid asyncpg offset-aware/naive binding errors.
+    """
+    if parsed.tzinfo is None:
+        return parsed
+    return parsed.astimezone().replace(tzinfo=None)
+
+
+def _parse_next_weekday_expression(time_str: str, now: datetime) -> datetime | None:
+    """Parse `next monday` and `next monday at 10am` style expressions."""
+    match = re.match(
+        r"^next\s+(monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+at\s+(.+))?$",
+        time_str.strip(),
+        flags=re.IGNORECASE,
+    )
+    if not match:
+        return None
+
+    weekday_name = match.group(1).lower()
+    time_part = (match.group(2) or "").strip()
+    weekday_map = {
+        "monday": 0,
+        "tuesday": 1,
+        "wednesday": 2,
+        "thursday": 3,
+        "friday": 4,
+        "saturday": 5,
+        "sunday": 6,
+    }
+    target = weekday_map[weekday_name]
+    days_ahead = (target - now.weekday()) % 7
+    if days_ahead == 0:
+        days_ahead = 7
+
+    target_date = now + timedelta(days=days_ahead)
+    if not time_part:
+        return target_date.replace(hour=9, minute=0, second=0, microsecond=0)
+
+    parsed_time = dateparser.parse(
+        time_part,
+        settings={
+            "PREFER_DATES_FROM": "future",
+            "RELATIVE_BASE": now,
+            "STRICT_PARSING": False,
+        },
+    )
+    if not parsed_time:
+        return None
+
+    return target_date.replace(
+        hour=parsed_time.hour,
+        minute=parsed_time.minute,
+        second=0,
+        microsecond=0,
+    )
 
 
 def _parse_time_expression(time_str: str, timezone: str | None = None) -> datetime:
@@ -53,7 +173,7 @@ def _parse_time_expression(time_str: str, timezone: str | None = None) -> dateti
     Raises:
         ValueError: If the time expression cannot be parsed
     """
-    time_str = time_str.strip()
+    time_str = _normalize_time_expression(time_str)
 
     # Use timezone-aware now if timezone is provided
     if timezone:
@@ -66,7 +186,11 @@ def _parse_time_expression(time_str: str, timezone: str | None = None) -> dateti
     else:
         now = datetime.now()
 
-    # Configuration for dateparser
+    weekday_dt = _parse_next_weekday_expression(time_str, now)
+    if weekday_dt:
+        return weekday_dt
+
+    # Strict-ish configuration for richer natural-language date expressions.
     settings_config = {
         'PREFER_DATES_FROM': 'future',
         'RELATIVE_BASE': now,
@@ -78,27 +202,19 @@ def _parse_time_expression(time_str: str, timezone: str | None = None) -> dateti
     parsed = dateparser.parse(time_str, settings=settings_config)
 
     if parsed:
-        # If parsed time is in the past and no explicit date was given, assume future
-        # Check if the input seems like just a time (no date keywords)
-        date_keywords = {'today', 'tomorrow', 'yesterday', 'next', 'last', 'in',
-                        'week', 'month', 'year', 'monday', 'tuesday', 'wednesday',
-                        'thursday', 'friday', 'saturday', 'sunday', 'jan', 'feb',
-                        'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct',
-                        'nov', 'dec', '-', '/'}
+        parsed = _align_datetime_timezone(parsed, now)
+        return _adjust_time_only_to_future(parsed, now, time_str)
 
-        has_date_keyword = any(word in time_str.lower() for word in date_keywords)
-
-        # If it looks like just a time and is in the past, move to tomorrow
-        if parsed < now and not has_date_keyword:
-            # Check if original input looks like just a time
-            time_match = re.match(r'^\d{1,2}(:\d{2})?\s*(am|pm)?$', time_str.lower())
-            if time_match:
-                # Add one day
-                from datetime import timedelta
-                parsed += timedelta(days=1)
-
-        if parsed:
-            return parsed
+    # Second try: relaxed parse to accept common time-only expressions.
+    relaxed_settings = {
+        'PREFER_DATES_FROM': 'future',
+        'RELATIVE_BASE': now,
+        'STRICT_PARSING': False,
+    }
+    parsed = dateparser.parse(time_str, settings=relaxed_settings)
+    if parsed:
+        parsed = _align_datetime_timezone(parsed, now)
+        return _adjust_time_only_to_future(parsed, now, time_str)
 
     # Fallback for military time format like "1130hr", "1430hr" (edge case)
     military_match = re.search(r'(\d{4})hr\b', time_str)
@@ -109,7 +225,6 @@ def _parse_time_expression(time_str: str, timezone: str | None = None) -> dateti
         if 0 <= hour <= 23 and 0 <= minute <= 59:
             parsed_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
             if parsed_time < now:
-                from datetime import timedelta
                 parsed_time += timedelta(days=1)
             return parsed_time
 
@@ -120,7 +235,6 @@ def _parse_time_expression(time_str: str, timezone: str | None = None) -> dateti
         if 0 <= hour <= 23 and 0 <= minute <= 59:
             parsed_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
             if parsed_time < now:
-                from datetime import timedelta
                 parsed_time += timedelta(days=1)
             return parsed_time
 
@@ -164,16 +278,20 @@ async def reminder_set(
 
     try:
         due_time = _parse_time_expression(time, timezone if timezone else None)
+        due_time = _to_storage_datetime(due_time)
     except ValueError as e:
-        return str(e)
+        return f"Error: {e}"
 
-    reminder = await storage.create(
-        thread_id=thread_id,
-        message=message,
-        due_time=due_time,
-        recurrence=recurrence or None,
-        timezone=timezone if timezone else None,
-    )
+    try:
+        reminder = await storage.create(
+            thread_id=thread_id,
+            message=message,
+            due_time=due_time,
+            recurrence=recurrence or None,
+            timezone=timezone if timezone else None,
+        )
+    except Exception as e:
+        return f"Error: failed to save reminder ({type(e).__name__}): {e}"
 
     await _refresh_reminder_meta(thread_id)
     recurrence_str = f" (recurring: {recurrence})" if recurrence else ""
@@ -204,7 +322,10 @@ async def reminder_list(
     if status and status not in valid_statuses:
         return f"Invalid status. Use one of: {', '.join(valid_statuses)}"
 
-    reminders = await storage.list_by_thread(thread_id, status or None)
+    try:
+        reminders = await storage.list_by_thread(thread_id, status or None)
+    except Exception as e:
+        return f"Error: failed to list reminders ({type(e).__name__}): {e}"
 
     if not reminders:
         return "No reminders found."
@@ -241,7 +362,10 @@ async def reminder_cancel(
         return "Error: Could not determine conversation context."
 
     # Verify the reminder belongs to this user
-    reminder = await storage.get_by_id(reminder_id)
+    try:
+        reminder = await storage.get_by_id(reminder_id)
+    except Exception as e:
+        return f"Error: failed to read reminder ({type(e).__name__}): {e}"
 
     if not reminder:
         return f"Reminder {reminder_id} not found."
@@ -252,7 +376,10 @@ async def reminder_cancel(
     if reminder.status != "pending":
         return f"Reminder {reminder_id} is not pending (status: {reminder.status})."
 
-    await storage.cancel(reminder_id)
+    try:
+        await storage.cancel(reminder_id)
+    except Exception as e:
+        return f"Error: failed to cancel reminder ({type(e).__name__}): {e}"
     await _refresh_reminder_meta(thread_id)
     return f"Reminder {reminder_id} cancelled."
 
@@ -283,7 +410,10 @@ async def reminder_edit(
         return "Error: Could not determine conversation context."
 
     # Verify ownership
-    reminder = await storage.get_by_id(reminder_id)
+    try:
+        reminder = await storage.get_by_id(reminder_id)
+    except Exception as e:
+        return f"Error: failed to read reminder ({type(e).__name__}): {e}"
 
     if not reminder:
         return f"Reminder {reminder_id} not found."
@@ -303,20 +433,24 @@ async def reminder_edit(
             # Use existing timezone if not specified
             tz = timezone if timezone else reminder.timezone
             new_due_time = _parse_time_expression(time, tz if tz else None)
+            new_due_time = _to_storage_datetime(new_due_time)
         except ValueError as e:
-            return str(e)
+            return f"Error: {e}"
 
     # Handle timezone update (empty string means no change, "UTC" or similar means set to that)
     new_timezone = None
     if timezone:
         new_timezone = timezone if timezone != "remove" else None
 
-    updated = await storage.update(
-        reminder_id,
-        new_message,
-        new_due_time,
-        timezone=new_timezone,
-    )
+    try:
+        updated = await storage.update(
+            reminder_id,
+            new_message,
+            new_due_time,
+            timezone=new_timezone,
+        )
+    except Exception as e:
+        return f"Error: failed to update reminder ({type(e).__name__}): {e}"
 
     if updated:
         await _refresh_reminder_meta(thread_id)

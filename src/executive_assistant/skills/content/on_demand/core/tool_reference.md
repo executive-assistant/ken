@@ -164,7 +164,9 @@ Schedule notifications for future events.
 | `reminder_cancel` | Cancel reminder |
 | `reminder_edit` | Modify reminder |
 
-**Time Formats:** "in 30 minutes", "tomorrow at 9am", "next monday", "2025-01-15 14:00"
+**Time Formats:** "in 30 minutes", "tomorrow at 9am", "next monday at 10am", "11.22pm tonight", "2025-01-15 14:00"
+
+**Preferred explicit format:** `YYYY-MM-DD HH:MM` (+ timezone when known, e.g. `2026-02-06 23:22 Australia/Sydney`)
 
 **When to use:** Deadlines, follow-ups, scheduled tasks.
 
