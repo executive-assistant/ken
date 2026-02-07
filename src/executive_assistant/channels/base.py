@@ -911,8 +911,10 @@ class BaseChannel(ABC):
         def _scan_xml_function_calls(text: str) -> None:
             # DeepSeek-style fallback:
             # <function_calls><invoke name="tool"><parameter name="x">1</parameter></invoke></function_calls>
+            # Also handle variants:
+            # <functioncalls> ... </function_calls>
             xml_blocks = re.findall(
-                r"<function_calls>\s*(.*?)\s*</function_calls>",
+                r"<function_?calls>\s*(.*?)\s*</function_?calls>",
                 text,
                 flags=re.IGNORECASE | re.DOTALL,
             )
@@ -962,6 +964,50 @@ class BaseChannel(ABC):
 
         return calls
 
+    def _contains_embedded_tool_markup(self, content: str) -> bool:
+        """Heuristic to detect model-returned tool-call markup in plain text."""
+        if not content:
+            return False
+        return bool(
+            re.search(
+                r"<\s*(tools|function_?calls?|invoke|parameter)\b",
+                content,
+                flags=re.IGNORECASE,
+            )
+        )
+
+    @staticmethod
+    def _normalize_argument_key(key: str) -> str:
+        """Normalize argument key variants (camel/squashed) to snake_case."""
+        if not key:
+            return key
+        cleaned = re.sub(r"[^A-Za-z0-9_]", "_", key.strip())
+        cleaned = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", cleaned).lower()
+        cleaned = re.sub(r"_+", "_", cleaned).strip("_")
+        alias_map = {
+            "memorytype": "memory_type",
+            "memory_type": "memory_type",
+            "memorykey": "key",
+            "threadid": "thread_id",
+            "conversationid": "conversation_id",
+            "userid": "user_id",
+        }
+        return alias_map.get(cleaned, cleaned)
+
+    @staticmethod
+    def _resolve_tool_name(name: str, tool_map: dict[str, Any]) -> str:
+        """Resolve tool name variants to a concrete registry tool name."""
+        if name in tool_map:
+            return name
+
+        compact_name = re.sub(r"[^a-z0-9]", "", name.lower())
+        compact_map = {
+            re.sub(r"[^a-z0-9]", "", tool_name.lower()): tool_name
+            for tool_name in tool_map
+            if tool_name
+        }
+        return compact_map.get(compact_name, name)
+
     async def _execute_embedded_tool_calls(
         self,
         content: str,
@@ -970,6 +1016,8 @@ class BaseChannel(ABC):
         """Execute embedded `<tools>` calls when model returns text instead of real tool calls."""
         calls = self._extract_embedded_tool_calls(content)
         if not calls:
+            if self._contains_embedded_tool_markup(content):
+                return ["Error: could not parse model tool-call output. Please retry."]
             return []
 
         from executive_assistant.tools.registry import get_all_tools
@@ -983,6 +1031,11 @@ class BaseChannel(ABC):
             args = call.get("arguments", {})
             if not isinstance(args, dict):
                 args = {}
+            args = {
+                self._normalize_argument_key(str(k)): v
+                for k, v in args.items()
+            }
+            name = self._resolve_tool_name(name, tool_map)
 
             key = json.dumps({"name": name, "arguments": args}, sort_keys=True)
             if seen_call_keys is not None:

@@ -19,6 +19,8 @@ VAGUE_PATTERNS = [
     r"^(i need|i want)\s{0,5}$",      # Very incomplete sentence (just "I need" or "I want" with minimal text)
 ]
 
+FORCE_ONBOARDING_MARKER = ".force_onboarding"
+
 
 def is_vague_request(message: str) -> bool:
     """Check if message is a vague request suggesting unfamiliarity.
@@ -124,9 +126,52 @@ def mark_onboarding_started(thread_id: str) -> None:
         user_root = settings.get_thread_root(thread_id)
         marker = user_root / ".onboarding_in_progress"
         marker.touch()
+        # Consume one-shot forced onboarding flag, if present.
+        force_marker = user_root / FORCE_ONBOARDING_MARKER
+        if force_marker.exists():
+            force_marker.unlink()
     except Exception:
         # Fail silently
         pass
+
+
+def mark_force_onboarding(thread_id: str) -> None:
+    """Force onboarding on the next message for this thread.
+
+    This is used after destructive reset operations (for example: /reset all)
+    so onboarding is triggered once on the next interaction.
+    """
+    try:
+        user_root = settings.get_thread_root(thread_id)
+        (user_root / FORCE_ONBOARDING_MARKER).touch()
+    except Exception:
+        # Fail silently
+        pass
+
+
+def has_force_onboarding(thread_id: str) -> bool:
+    """Return True if forced onboarding is pending for this thread."""
+    try:
+        user_root = settings.get_thread_root(thread_id)
+        return (user_root / FORCE_ONBOARDING_MARKER).exists()
+    except Exception:
+        return False
+
+
+def get_onboarding_trigger_reason(thread_id: str, has_admin_skills: bool) -> str | None:
+    """Return onboarding trigger reason, or None when onboarding should not run.
+
+    Priority:
+    1. forced-reset marker (from /reset all) always triggers once
+    2. empty user folder triggers only when not in admin-skills mode
+    """
+    if has_force_onboarding(thread_id):
+        return "forced-reset"
+
+    if is_user_data_empty(thread_id) and not has_admin_skills:
+        return "empty-user-folder"
+
+    return None
 
 
 def mark_onboarding_complete(thread_id: str) -> None:

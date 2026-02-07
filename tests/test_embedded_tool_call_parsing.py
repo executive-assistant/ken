@@ -51,6 +51,31 @@ def test_extract_embedded_tool_calls_parses_deepseek_xml() -> None:
     ]
 
 
+def test_extract_embedded_tool_calls_parses_functioncalls_variant() -> None:
+    channel = _channel()
+    content = """
+    <functioncalls>
+      <invoke name="creatememory">
+        <parameter name="content" string="true">Name is Eddy</parameter>
+        <parameter name="memorytype" string="true">preference</parameter>
+        <parameter name="key" string="true">userprofile</parameter>
+      </invoke>
+    </function_calls>
+    """
+
+    calls = channel._extract_embedded_tool_calls(content)
+    assert calls == [
+        {
+            "name": "creatememory",
+            "arguments": {
+                "content": "Name is Eddy",
+                "memorytype": "preference",
+                "key": "userprofile",
+            },
+        }
+    ]
+
+
 @pytest.mark.asyncio
 async def test_execute_embedded_tool_calls_executes_deepseek_xml(monkeypatch) -> None:
     channel = _channel()
@@ -76,3 +101,31 @@ async def test_execute_embedded_tool_calls_executes_deepseek_xml(monkeypatch) ->
 
     outputs = await channel._execute_embedded_tool_calls(content)
     assert outputs == ["12"]
+
+
+@pytest.mark.asyncio
+async def test_execute_embedded_tool_calls_normalizes_tool_and_argument_aliases(monkeypatch) -> None:
+    channel = _channel()
+
+    @tool
+    async def create_memory(content: str, memory_type: str = "fact", key: str = "") -> str:
+        """Create memory."""
+        return f"ok:{memory_type}:{key}:{content}"
+
+    monkeypatch.setattr(
+        "executive_assistant.tools.registry.get_all_tools",
+        AsyncMock(return_value=[create_memory]),
+    )
+
+    content = """
+    <functioncalls>
+      <invoke name="creatememory">
+        <parameter name="content" string="true">Name is Eddy</parameter>
+        <parameter name="memorytype" string="true">preference</parameter>
+        <parameter name="key" string="true">userprofile</parameter>
+      </invoke>
+    </function_calls>
+    """
+
+    outputs = await channel._execute_embedded_tool_calls(content)
+    assert outputs == ["ok:preference:userprofile:Name is Eddy"]

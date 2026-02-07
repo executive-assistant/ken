@@ -5,8 +5,11 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from executive_assistant.utils.onboarding import (
+    get_onboarding_trigger_reason,
+    has_force_onboarding,
     is_vague_request,
     is_user_data_empty,
+    mark_force_onboarding,
     mark_onboarding_started,
     mark_onboarding_complete,
     has_completed_onboarding,
@@ -144,6 +147,26 @@ class TestOnboardingMarkers:
         assert marker_file.exists()
 
     @patch('executive_assistant.utils.onboarding.settings')
+    def test_mark_onboarding_started_consumes_force_marker(self, mock_settings, tmp_path):
+        """Test that onboarding start consumes one-shot force marker."""
+        mock_settings.get_thread_root.return_value = tmp_path
+        (tmp_path / ".force_onboarding").touch()
+
+        mark_onboarding_started("test_thread")
+
+        assert (tmp_path / ".onboarding_in_progress").exists()
+        assert not (tmp_path / ".force_onboarding").exists()
+
+    @patch('executive_assistant.utils.onboarding.settings')
+    def test_force_onboarding_marker_roundtrip(self, mock_settings, tmp_path):
+        """Test force-onboarding marker create/check flow."""
+        mock_settings.get_thread_root.return_value = tmp_path
+
+        assert has_force_onboarding("test_thread") is False
+        mark_force_onboarding("test_thread")
+        assert has_force_onboarding("test_thread") is True
+
+    @patch('executive_assistant.utils.onboarding.settings')
     def test_mark_onboarding_complete_removes_marker(self, mock_settings, tmp_path):
         """Test that onboarding completion removes marker."""
         user_root = tmp_path
@@ -238,3 +261,34 @@ class TestShouldShowOnboarding:
 
         result = should_show_onboarding("test_thread")
         assert result is False
+
+
+class TestOnboardingTriggerReason:
+    """Test onboarding trigger decision logic."""
+
+    @patch('executive_assistant.utils.onboarding.has_force_onboarding')
+    @patch('executive_assistant.utils.onboarding.is_user_data_empty')
+    def test_force_reset_overrides_admin_skills(self, mock_is_empty, mock_has_force):
+        mock_has_force.return_value = True
+        mock_is_empty.return_value = False
+
+        reason = get_onboarding_trigger_reason("test_thread", has_admin_skills=True)
+        assert reason == "forced-reset"
+
+    @patch('executive_assistant.utils.onboarding.has_force_onboarding')
+    @patch('executive_assistant.utils.onboarding.is_user_data_empty')
+    def test_empty_user_no_admin_skills_triggers(self, mock_is_empty, mock_has_force):
+        mock_has_force.return_value = False
+        mock_is_empty.return_value = True
+
+        reason = get_onboarding_trigger_reason("test_thread", has_admin_skills=False)
+        assert reason == "empty-user-folder"
+
+    @patch('executive_assistant.utils.onboarding.has_force_onboarding')
+    @patch('executive_assistant.utils.onboarding.is_user_data_empty')
+    def test_empty_user_with_admin_skills_does_not_trigger(self, mock_is_empty, mock_has_force):
+        mock_has_force.return_value = False
+        mock_is_empty.return_value = True
+
+        reason = get_onboarding_trigger_reason("test_thread", has_admin_skills=True)
+        assert reason is None

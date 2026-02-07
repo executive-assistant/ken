@@ -142,7 +142,10 @@ class HttpChannel(BaseChannel):
             # === ONBOARDING CHECK ===
             # Trigger onboarding if user data folder is empty (new user or reset)
             # Skip if admin skills are present (specialized mode)
-            from executive_assistant.utils.onboarding import is_user_data_empty, mark_onboarding_started
+            from executive_assistant.utils.onboarding import (
+                get_onboarding_trigger_reason,
+                mark_onboarding_started,
+            )
             from executive_assistant.logging import get_logger, format_log_context
             from executive_assistant.config import settings
 
@@ -154,12 +157,10 @@ class HttpChannel(BaseChannel):
                 admin_skills_dir = settings.ADMINS_ROOT / "skills"
                 has_admin_skills = admin_skills_dir.exists() and any(admin_skills_dir.glob("on_start/*.md"))
 
-                # Check if user data folder is empty
-                user_folder_empty = is_user_data_empty(thread_id)
-
-                # Only trigger onboarding if: user folder is empty AND no admin skills
-                if user_folder_empty and not has_admin_skills:
-                    logger.info(f"{ctx_system} ONBOARDING: User data folder empty for {thread_id}, triggering onboarding")
+                # Trigger onboarding when forced by reset, or when new user and no admin skills mode.
+                reason = get_onboarding_trigger_reason(thread_id, has_admin_skills)
+                if reason:
+                    logger.info(f"{ctx_system} ONBOARDING: Triggering onboarding for {thread_id} (reason={reason})")
                     # Mark onboarding as in-progress to prevent re-triggering
                     mark_onboarding_started(thread_id)
                     # Add system note to trigger onboarding skill

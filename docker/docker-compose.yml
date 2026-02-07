@@ -11,6 +11,8 @@ services:
     volumes:
       - ken_data:/app/data
       - ./data/admins:/app/data/admins
+      # Allow host edits to docker/config.yaml to take effect on container restart.
+      - ./config.yaml:/app/docker/config.yaml:ro
     ports:
       - "8000:8000"
     depends_on:

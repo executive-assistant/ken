@@ -78,6 +78,20 @@ Key variables:
 - `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB` - Database config
 - `EXECUTIVE_ASSISTANT_CHANNELS` - Channels to enable (telegram,http)
 
+### config.yaml (Mounted into container)
+
+`docker/config.yaml` is bind-mounted to `/app/docker/config.yaml` in the `ken` container.
+
+- Edit `docker/config.yaml` on host, then redeploy/restart to apply changes.
+- `.env` still has higher precedence than `config.yaml` for overlapping keys.
+
+Apply config changes:
+
+```bash
+docker compose -f docker/docker-compose.yml up -d --force-recreate ken
+docker compose -f docker/docker-compose.yml logs ken --tail=80 | rg "LLM config validated"
+```
+
 ### First-Time Setup
 
 Fix permissions for admin files:
