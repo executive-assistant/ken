@@ -10,7 +10,7 @@ import json
 import re
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.types import Runnable
@@ -548,6 +548,10 @@ class BaseChannel(ABC):
                 thread_id,
             )
             build_agent_ms = (time.perf_counter() - build_agent_start) * 1000.0
+
+            async def _fallback_status(step: int, tool_name: str, _args: dict[str, Any]) -> None:
+                await self.send_status(message.conversation_id, f"🛠️ {step}: {tool_name}")
+
             async for event in request_agent.astream(state, config):
                 event_count += 1
                 if event_count <= 20:
@@ -576,7 +580,11 @@ class BaseChannel(ABC):
                 new_messages = self._get_new_ai_messages(messages, message.message_id)
                 for msg in new_messages:
                     if isinstance(msg, AIMessage) and getattr(msg, "content", None):
-                        embedded_results = await self._execute_embedded_tool_calls(msg.content, embedded_seen)
+                        embedded_results = await self._execute_embedded_tool_calls(
+                            msg.content,
+                            embedded_seen,
+                            on_tool_start=_fallback_status,
+                        )
                         if embedded_results:
                             for result_text in embedded_results:
                                 await self.send_message(message.conversation_id, result_text)
@@ -1084,6 +1092,7 @@ class BaseChannel(ABC):
         self,
         content: str,
         seen_call_keys: set[str] | None = None,
+        on_tool_start: Callable[[int, str, dict[str, Any]], Awaitable[None]] | None = None,
     ) -> list[str]:
         """Execute embedded `<tools>` calls when model returns text instead of real tool calls."""
         if self._contains_embedded_tool_markup(content) and not self._is_predominantly_tool_payload(content):
@@ -1100,6 +1109,7 @@ class BaseChannel(ABC):
         tools = await get_all_tools()
         tool_map = {getattr(t, "name", ""): t for t in tools}
         outputs: list[str] = []
+        tool_step = 0
 
         for call in calls:
             name = str(call.get("name", "")).strip()
@@ -1119,6 +1129,12 @@ class BaseChannel(ABC):
                 seen_call_keys.add(key)
 
             tool = tool_map.get(name)
+            tool_step += 1
+            if on_tool_start is not None:
+                try:
+                    await on_tool_start(tool_step, name, args)
+                except Exception as e:
+                    logger.debug(f"fallback_tool_status_failed step={tool_step} tool={name} error={e}")
             if tool is None:
                 outputs.append(f"Error: unknown tool '{name}'")
                 continue

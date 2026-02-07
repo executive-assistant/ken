@@ -873,6 +873,10 @@ class TelegramChannel(BaseChannel):
             build_start = time.perf_counter()
             request_agent, build_meta = await self._build_request_agent(batch[-1].content, batch[-1].conversation_id)
             build_agent_ms = (time.perf_counter() - build_start) * 1000.0
+
+            async def _fallback_status(step: int, tool_name: str, _args: dict[str, Any]) -> None:
+                await self.send_status(batch[-1].conversation_id, f"🛠️ {step}: {tool_name}")
+
             async for event in request_agent.astream(state, config):
                 event_count += 1
 
@@ -881,7 +885,11 @@ class TelegramChannel(BaseChannel):
                 new_messages = self._get_new_ai_messages(msgs, last_message_id)
                 for msg in new_messages:
                     if isinstance(msg, AIMessage) and getattr(msg, "content", None):
-                        embedded_results = await self._execute_embedded_tool_calls(msg.content, embedded_seen)
+                        embedded_results = await self._execute_embedded_tool_calls(
+                            msg.content,
+                            embedded_seen,
+                            on_tool_start=_fallback_status,
+                        )
                         if embedded_results:
                             for result_text in embedded_results:
                                 message_count += 1
@@ -1075,10 +1083,19 @@ class TelegramChannel(BaseChannel):
             try:
                 await _delete_postgres_rows()
                 deleted.append("conversation state")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Reset conversation state failed for {thread_id}: {e}")
 
         if scope in ("tdb", "all"):
+            # TDB uses cached SQLite connections; clear cache before deleting files.
+            # Without this, an in-memory connection can keep old tables visible after reset.
+            try:
+                from executive_assistant.storage.sqlite_db_storage import reset_connection_cache
+
+                reset_connection_cache()
+            except Exception as e:
+                logger.warning(f"Reset TDB cache clear failed for {thread_id}: {e}")
+
             db_path = user_root / "tdb" / "db.sqlite"
             if db_path.exists():
                 db_path.unlink()
@@ -1118,22 +1135,22 @@ class TelegramChannel(BaseChannel):
             try:
                 await _delete_postgres_rows()
                 deleted.append("reminders")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Reset reminders failed for {thread_id}: {e}")
 
         if scope in ("flows", "all"):
             try:
                 await _delete_postgres_rows()
                 deleted.append("flows")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Reset flows failed for {thread_id}: {e}")
 
         if scope == "all" and user_root.exists():
             try:
                 shutil.rmtree(user_root)
                 deleted.append("user data")
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Reset user root failed for {thread_id}: {e}")
 
         if scope == "all":
             try:

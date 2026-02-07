@@ -12,6 +12,36 @@ from typing import Any
 from executive_assistant.config import create_model
 
 
+def _extract_llm_text(response: Any) -> str:
+    """Extract plain text from LLM response objects (str or message-like)."""
+    if response is None:
+        return ""
+    if isinstance(response, str):
+        return response
+
+    content = getattr(response, "content", None)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+                else:
+                    parts.append(str(item))
+            else:
+                parts.append(str(item))
+        return "\n".join(p for p in parts if p).strip()
+    if content is not None:
+        return str(content)
+
+    return str(response)
+
+
 def format_journal_entries(entries: list[dict[str, Any]]) -> str:
     """Format journal entries for LLM.
 
@@ -121,7 +151,7 @@ If NOTHING important needs attention, return exactly: CHECKIN_OK
     try:
         llm = create_model()
         response = await llm.ainvoke(prompt)
-        result = response.strip()
+        result = _extract_llm_text(response).strip()
 
         # Check for empty or unimportant responses
         if not result or result.lower() == "checkin_ok":

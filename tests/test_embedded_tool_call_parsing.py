@@ -209,3 +209,34 @@ async def test_execute_embedded_tool_calls_rejects_mixed_markup_content(monkeypa
 
     outputs = await channel._execute_embedded_tool_calls(content)
     assert outputs == ["Error: model returned mixed content with tool-call markup. Please retry."]
+
+
+@pytest.mark.asyncio
+async def test_execute_embedded_tool_calls_emits_status_callback(monkeypatch) -> None:
+    channel = _channel()
+    status_events: list[str] = []
+
+    @tool
+    async def search_web(query: str, num_results: int = 5) -> str:
+        """Search web."""
+        return f"{query}:{num_results}"
+
+    monkeypatch.setattr(
+        "executive_assistant.tools.registry.get_all_tools",
+        AsyncMock(return_value=[search_web]),
+    )
+
+    content = """
+    <functioncalls>
+      <invoke name="search_web">
+        <parameter name="query" string="true">LangChain</parameter>
+      </invoke>
+    </functioncalls>
+    """
+
+    async def _on_tool_start(step: int, tool_name: str, _args: dict) -> None:
+        status_events.append(f"{step}:{tool_name}")
+
+    outputs = await channel._execute_embedded_tool_calls(content, on_tool_start=_on_tool_start)
+    assert outputs == ["LangChain:5"]
+    assert status_events == ["1:search_web"]

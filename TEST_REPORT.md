@@ -1,10 +1,10 @@
 # Ken Executive Assistant Unified Test Report
 
-**Status:** PASS WITH RISKS (`W6` restart automation not enabled in this run)
+**Status:** PASS WITH RISKS (`W6` restart automation not enabled in this run; DeepSeek XML fallback still requires strict runtime validation on deployment)
 
 ## 1) Environment
 
-- **Latest run window (AEDT):** 2026-02-07
+- **Latest run window (AEDT):** 2026-02-08
 - **Commit:** working tree (uncommitted changes)
 - **Provider/Model Mode:** `ollama cloud` (`deepseek-v3.2:cloud` default + fast)
 - **Channel:** HTTP
@@ -30,12 +30,15 @@ Legacy report archive remains at `TEST_REPORT_LEGACY_2026-02-06.md`.
 | `weekly` | PASS | 10 | 0 | 1 | `/tmp/ken_scope_weekly_tools_fix4.txt` |
 | `extended` | PASS | 25 | 0 | 0 | `/tmp/ken_scope_extended_tools_fix4.txt` |
 | `tool-e2e` | PASS | 3 tests | 0 | 0 | `tests/test_all_tools_end_to_end.py`, `tests/test_embedded_tool_call_parsing.py` |
+| `reset-regression` | PASS | 3 tests | 0 | 0 | `tests/test_reset_onboarding.py` |
 
 Notes:
 - Weekly `SKIP=1` is `W6` only (`--allow-restart --restart-cmd` not provided).
 - Tool-e2e evidence:
   - `uv run pytest -q tests/test_all_tools_end_to_end.py` -> `1 passed`
   - `uv run pytest -q tests/test_embedded_tool_call_parsing.py` -> `2 passed`
+- Reset evidence:
+  - `.venv/bin/pytest -q tests/test_reset_onboarding.py` -> `3 passed`
 
 ## 4) Core Results (`S1`-`R2`)
 
@@ -101,11 +104,27 @@ Run:
 - Updated prompt guidance in `src/executive_assistant/agent/prompts.py` to enforce direct tool invocation on explicit tool requests.
 - Fixed reminder timezone persistence bug in `src/executive_assistant/tools/reminder_tools.py` by normalizing aware datetimes before DB write.
 - Improved deterministic scope fallbacks in `scripts/run_http_scope_tests.sh` for `T1`, `W1C`, `W2`, `W3`, `X_SKILLS_LIST`, `X_APP_CRM`, and `X_APP_FILE`.
+- Added DeepSeek XML compatibility hardening in `src/executive_assistant/channels/base.py`:
+  - support for attribute-bearing `<function_calls ...>` / `<tools ...>`
+  - arg aliases (`numresults` -> `num_results`)
+  - mixed-content guard to reject tool-markup + prose leakage
+  - `fallback_tool_calls` telemetry
+- Wired compatibility parser path into Telegram execution (`src/executive_assistant/channels/telegram.py`) so XML fallback tool calls execute instead of leaking raw markup.
+- Hardened `/reset` behavior in `src/executive_assistant/channels/telegram.py`:
+  - clear SQLite TDB connection cache before deleting `tdb/db.sqlite`
+  - emit warnings when reset sub-operations fail (instead of silent pass)
+- Added reset regressions in `tests/test_reset_onboarding.py`:
+  - verifies SQLite cache clear is invoked
+  - verifies stale cached table state is removed after `reset tdb`
 
 ## 8) Known Risks / Gaps
 
 1. `W6` remains skipped unless run with restart automation enabled.
 2. `tests/test_memory_tools.py` remains a legacy-style suite and is not part of this deterministic HTTP scope gate.
+3. DeepSeek on Ollama Cloud can mix native tool calls and XML fallback in the same request; deployments must include the compatibility parser path and mixed-content guard.
+4. Interim tool status visibility depends on tool execution path:
+   - native tool calls show per-step status (`🛠️ ...`)
+   - fallback-only XML execution may not emit identical middleware status cadence in all channels.
 
 ## 9) Final Verdict
 

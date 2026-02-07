@@ -507,12 +507,19 @@ class HttpChannel(BaseChannel):
         build_agent_ms = (time.perf_counter() - build_start) * 1000.0
         first_response_ms: float | None = None
 
+        async def _fallback_status(step: int, tool_name: str, _args: dict[str, Any]) -> None:
+            await self.send_status(message.conversation_id, f"🛠️ {step}: {tool_name}")
+
         async for event in request_agent.astream(state, config):
             messages = self._extract_messages_from_event(event)
             new_messages = self._get_new_ai_messages(messages, message_id)
             for msg in new_messages:
                 if isinstance(msg, AIMessage) and getattr(msg, "content", None):
-                    embedded_results = await self._execute_embedded_tool_calls(msg.content, embedded_seen)
+                    embedded_results = await self._execute_embedded_tool_calls(
+                        msg.content,
+                        embedded_seen,
+                        on_tool_start=_fallback_status,
+                    )
                     if embedded_results:
                         all_messages.append(AIMessage(content="\n".join(embedded_results)))
                         if first_response_ms is None:
@@ -603,6 +610,9 @@ class HttpChannel(BaseChannel):
         first_response_ms: float | None = None
         embedded_seen: set[str] = set()
 
+        async def _fallback_status(step: int, tool_name: str, _args: dict[str, Any]) -> None:
+            await self.send_status(batch[-1].conversation_id, f"🛠️ {step}: {tool_name}")
+
         # Token tracking
         total_input_tokens = 0
         total_output_tokens = 0
@@ -612,7 +622,11 @@ class HttpChannel(BaseChannel):
             new_messages = self._get_new_ai_messages(msgs, last_message_id) if last_message_id else []
             for msg in new_messages:
                 if isinstance(msg, AIMessage) and getattr(msg, "content", None):
-                    embedded_results = await self._execute_embedded_tool_calls(msg.content, embedded_seen)
+                    embedded_results = await self._execute_embedded_tool_calls(
+                        msg.content,
+                        embedded_seen,
+                        on_tool_start=_fallback_status,
+                    )
                     if embedded_results:
                         for result_text in embedded_results:
                             chunk = MessageChunk(
