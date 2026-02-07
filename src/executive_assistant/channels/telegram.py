@@ -773,6 +773,10 @@ class TelegramChannel(BaseChannel):
         request_start = time.time()
         run_start_perf = time.perf_counter()
         typing_task = None
+        build_agent_ms = 0.0
+        first_response_ms: float | None = None
+        build_meta: dict[str, Any] = {}
+        self._reset_fallback_tool_call_metric()
 
         ctx = format_log_context("system", component="agent", channel="telegram", conversation=batch[-1].conversation_id, user=thread_id)
 
@@ -865,10 +869,10 @@ class TelegramChannel(BaseChannel):
             agent_start = time.time()
             event_count = 0
             message_count = 0
+            embedded_seen: set[str] = set()
             build_start = time.perf_counter()
             request_agent, build_meta = await self._build_request_agent(batch[-1].content, batch[-1].conversation_id)
             build_agent_ms = (time.perf_counter() - build_start) * 1000.0
-            first_response_ms: float | None = None
             async for event in request_agent.astream(state, config):
                 event_count += 1
 
@@ -876,6 +880,16 @@ class TelegramChannel(BaseChannel):
                 msgs = self._extract_messages_from_event(event)
                 new_messages = self._get_new_ai_messages(msgs, last_message_id)
                 for msg in new_messages:
+                    if isinstance(msg, AIMessage) and getattr(msg, "content", None):
+                        embedded_results = await self._execute_embedded_tool_calls(msg.content, embedded_seen)
+                        if embedded_results:
+                            for result_text in embedded_results:
+                                message_count += 1
+                                await self.send_message(batch[-1].conversation_id, result_text)
+                                if first_response_ms is None:
+                                    first_response_ms = (time.perf_counter() - run_start_perf) * 1000.0
+                            continue
+
                     if isinstance(msg, AIMessage) and hasattr(msg, "content") and msg.content and msg.content.strip():
                         message_count += 1
                         await self.send_message(batch[-1].conversation_id, msg.content)
@@ -933,11 +947,13 @@ class TelegramChannel(BaseChannel):
             total_ms = total_elapsed * 1000.0
             post_process_ms = max(total_ms - (build_agent_ms + model_ms + tools_ms), 0.0)
             first_ms = first_response_ms if first_response_ms is not None else -1.0
+            fallback_tool_calls = self._get_fallback_tool_call_metric()
             logger.info(
                 f"{ctx} stage_timing_ms build_agent={build_agent_ms:.1f} model={model_ms:.1f} "
                 f"tools={tools_ms:.1f} post_process={post_process_ms:.1f} first_response={first_ms:.1f} "
                 f"total={total_ms:.1f} model_calls={int((thread_timing or {}).get('model_calls', 0))} "
                 f"tool_calls={int((thread_timing or {}).get('tool_calls', 0))} "
+                f"fallback_tool_calls={fallback_tool_calls} "
                 f"tool_profile={build_meta.get('tool_profile', 'unknown')} "
                 f"agent_cache_hit={build_meta.get('cache_hit', False)} tools_count={build_meta.get('tools_count', -1)}"
             )
