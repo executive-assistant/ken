@@ -76,6 +76,29 @@ def test_extract_embedded_tool_calls_parses_functioncalls_variant() -> None:
     ]
 
 
+def test_extract_embedded_tool_calls_parses_function_calls_with_attrs() -> None:
+    channel = _channel()
+    content = """
+    <function_calls model="deepseek-v3.2:cloud">
+      <invoke name="searchweb">
+        <parameter name="query" string="true">LangChain deep agents documentation</parameter>
+        <parameter name="numresults" string="false">5</parameter>
+      </invoke>
+    </function_calls>
+    """
+
+    calls = channel._extract_embedded_tool_calls(content)
+    assert calls == [
+        {
+            "name": "searchweb",
+            "arguments": {
+                "query": "LangChain deep agents documentation",
+                "numresults": 5,
+            },
+        }
+    ]
+
+
 @pytest.mark.asyncio
 async def test_execute_embedded_tool_calls_executes_deepseek_xml(monkeypatch) -> None:
     channel = _channel()
@@ -129,3 +152,60 @@ async def test_execute_embedded_tool_calls_normalizes_tool_and_argument_aliases(
 
     outputs = await channel._execute_embedded_tool_calls(content)
     assert outputs == ["ok:preference:userprofile:Name is Eddy"]
+
+
+@pytest.mark.asyncio
+async def test_execute_embedded_tool_calls_normalizes_searchweb_numresults(monkeypatch) -> None:
+    channel = _channel()
+
+    @tool
+    async def search_web(query: str, num_results: int = 5, scrape_results: bool = False) -> str:
+        """Search web."""
+        return f"query={query}|num_results={num_results}|scrape_results={scrape_results}"
+
+    monkeypatch.setattr(
+        "executive_assistant.tools.registry.get_all_tools",
+        AsyncMock(return_value=[search_web]),
+    )
+
+    content = """
+    <functioncalls>
+      <invoke name="searchweb">
+        <parameter name="query" string="true">LangChain deep agents documentation</parameter>
+        <parameter name="numresults" string="false">5</parameter>
+      </invoke>
+    </functioncalls>
+    """
+
+    outputs = await channel._execute_embedded_tool_calls(content)
+    assert outputs == [
+        "query=LangChain deep agents documentation|num_results=5|scrape_results=False"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_execute_embedded_tool_calls_rejects_mixed_markup_content(monkeypatch) -> None:
+    channel = _channel()
+
+    @tool
+    async def search_web(query: str, num_results: int = 5) -> str:
+        """Search web."""
+        return f"{query}:{num_results}"
+
+    monkeypatch.setattr(
+        "executive_assistant.tools.registry.get_all_tools",
+        AsyncMock(return_value=[search_web]),
+    )
+
+    content = """
+    I found this:
+    <function_calls>
+      <invoke name="search_web">
+        <parameter name="query" string="true">LangChain</parameter>
+      </invoke>
+    </function_calls>
+    Let me know if you want more.
+    """
+
+    outputs = await channel._execute_embedded_tool_calls(content)
+    assert outputs == ["Error: model returned mixed content with tool-call markup. Please retry."]

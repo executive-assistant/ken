@@ -465,6 +465,7 @@ class HttpChannel(BaseChannel):
             List of AI messages from the agent
         """
         thread_id = self.get_thread_id(message)
+        self._reset_fallback_tool_call_metric()
         # Bootstrap check-in defaults for this user so proactive scheduler can discover it.
         try:
             from executive_assistant.checkin.config import get_checkin_config
@@ -534,6 +535,7 @@ class HttpChannel(BaseChannel):
         total_ms = (time.perf_counter() - request_start) * 1000.0
         first_ms = first_response_ms if first_response_ms is not None else -1.0
         post_process_ms = max(total_ms - (build_agent_ms + model_ms + tools_ms), 0.0)
+        fallback_tool_calls = self._get_fallback_tool_call_metric()
         ctx_perf = format_log_context(
             "system",
             component="perf",
@@ -546,6 +548,7 @@ class HttpChannel(BaseChannel):
             f"tools={tools_ms:.1f} post_process={post_process_ms:.1f} first_response={first_ms:.1f} "
             f"total={total_ms:.1f} model_calls={int((thread_timing or {}).get('model_calls', 0))} "
             f"tool_calls={int((thread_timing or {}).get('tool_calls', 0))} "
+            f"fallback_tool_calls={fallback_tool_calls} "
             f"tool_profile={build_meta.get('tool_profile', 'unknown')} "
             f"agent_cache_hit={build_meta.get('cache_hit', False)} tools_count={build_meta.get('tools_count', -1)}"
         )
@@ -558,6 +561,7 @@ class HttpChannel(BaseChannel):
         batch: list[MessageFormat],
     ) -> AsyncIterator[str]:
         config = {"configurable": {"thread_id": thread_id}}
+        self._reset_fallback_tool_call_metric()
 
         set_thread_id(thread_id)
         # Bootstrap check-in defaults for this user so proactive scheduler can discover it.
@@ -673,6 +677,7 @@ class HttpChannel(BaseChannel):
         total_ms = (time.perf_counter() - request_start) * 1000.0
         post_process_ms = max(total_ms - (build_agent_ms + model_ms + tools_ms), 0.0)
         first_ms = first_response_ms if first_response_ms is not None else -1.0
+        fallback_tool_calls = self._get_fallback_tool_call_metric()
         ctx_perf = format_log_context(
             "system",
             component="perf",
@@ -685,6 +690,7 @@ class HttpChannel(BaseChannel):
             f"tools={tools_ms:.1f} post_process={post_process_ms:.1f} first_response={first_ms:.1f} "
             f"total={total_ms:.1f} model_calls={int((thread_timing or {}).get('model_calls', 0))} "
             f"tool_calls={int((thread_timing or {}).get('tool_calls', 0))} "
+            f"fallback_tool_calls={fallback_tool_calls} "
             f"tool_profile={build_meta.get('tool_profile', 'unknown')} "
             f"agent_cache_hit={build_meta.get('cache_hit', False)} tools_count={build_meta.get('tools_count', -1)}"
         )

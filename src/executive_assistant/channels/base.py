@@ -33,6 +33,10 @@ from executive_assistant.agent.flow_mode import (
 )
 
 logger = get_logger(__name__)
+_fallback_tool_calls_ctx: contextvars.ContextVar[int] = contextvars.ContextVar(
+    "fallback_tool_calls_ctx",
+    default=0,
+)
 
 _SIMPLE_CHAT_PATTERN = re.compile(
     r"^\s*(hi|hello|hey|yo|sup|good (morning|afternoon|evening)|thanks?|thank you|thx|ok|okay|cool|great|nice|how are you( doing)?|what can you do\??|help\??)\s*[!.?]*\s*$",
@@ -217,6 +221,18 @@ class BaseChannel(ABC):
         names.sort()
         payload = "|".join(names)
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+    @staticmethod
+    def _reset_fallback_tool_call_metric() -> None:
+        _fallback_tool_calls_ctx.set(0)
+
+    @staticmethod
+    def _increment_fallback_tool_call_metric() -> None:
+        _fallback_tool_calls_ctx.set(_fallback_tool_calls_ctx.get() + 1)
+
+    @staticmethod
+    def _get_fallback_tool_call_metric() -> int:
+        return int(_fallback_tool_calls_ctx.get())
 
     async def _get_cached_agent(self, cache_key: str) -> Runnable | None:
         if not self._agent_cache_enabled:
@@ -422,6 +438,7 @@ class BaseChannel(ABC):
             build_agent_ms = 0.0
             first_response_ms: float | None = None
             build_meta: dict[str, Any] = {}
+            self._reset_fallback_tool_call_metric()
 
             # Set up context
             thread_id = self.get_thread_id(message)
@@ -643,11 +660,13 @@ class BaseChannel(ABC):
             total_ms = (time.perf_counter() - request_start) * 1000.0
             post_process_ms = max(total_ms - (memory_ms + build_agent_ms + model_ms + tools_ms), 0.0)
             first_ms = first_response_ms if first_response_ms is not None else -1.0
+            fallback_tool_calls = self._get_fallback_tool_call_metric()
             logger.info(
                 f"{ctx_system} stage_timing_ms memory={memory_ms:.1f} build_agent={build_agent_ms:.1f} "
                 f"model={model_ms:.1f} tools={tools_ms:.1f} post_process={post_process_ms:.1f} "
                 f"first_response={first_ms:.1f} total={total_ms:.1f} model_calls={model_calls} "
-                f"tool_calls={tool_calls} tool_profile={build_meta.get('tool_profile', 'unknown')} "
+                f"tool_calls={tool_calls} fallback_tool_calls={fallback_tool_calls} "
+                f"tool_profile={build_meta.get('tool_profile', 'unknown')} "
                 f"agent_cache_hit={build_meta.get('cache_hit', False)} tools_count={build_meta.get('tools_count', -1)}"
             )
             self._active_tasks.pop(message.conversation_id, None)
@@ -914,7 +933,7 @@ class BaseChannel(ABC):
             # Also handle variants:
             # <functioncalls> ... </function_calls>
             xml_blocks = re.findall(
-                r"<function_?calls>\s*(.*?)\s*</function_?calls>",
+                r"<function_?calls\b[^>]*>\s*(.*?)\s*</function_?calls\s*>",
                 text,
                 flags=re.IGNORECASE | re.DOTALL,
             )
@@ -947,7 +966,11 @@ class BaseChannel(ABC):
                     calls.append({"name": tool_name, "arguments": args})
 
         # 1) `<tools>...</tools>` blocks
-        blocks = re.findall(r"<tools>\s*(.*?)\s*</tools>", content, flags=re.IGNORECASE | re.DOTALL)
+        blocks = re.findall(
+            r"<tools\b[^>]*>\s*(.*?)\s*</tools\s*>",
+            content,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
         for block in blocks:
             _scan_json_objects(block)
 
@@ -960,7 +983,10 @@ class BaseChannel(ABC):
             _scan_json_objects(block)
 
         # 3) full content fallback (plain inline JSON snippets)
-        _scan_json_objects(content)
+        # Only allow when payload is mostly tool-call markup/JSON to avoid
+        # executing arbitrary JSON fragments from natural language text.
+        if self._is_predominantly_tool_payload(content):
+            _scan_json_objects(content)
 
         return calls
 
@@ -975,6 +1001,49 @@ class BaseChannel(ABC):
                 flags=re.IGNORECASE,
             )
         )
+
+    def _is_predominantly_tool_payload(self, content: str) -> bool:
+        """Return True when content is mostly tool-call payload.
+
+        This avoids executing accidental/injected tool snippets embedded inside
+        longer natural-language responses.
+        """
+        if not content:
+            return False
+
+        stripped = content.strip()
+        if not stripped:
+            return False
+
+        if re.fullmatch(r"(?is)\s*<function_?calls\b[^>]*>.*?</function_?calls\s*>\s*", stripped):
+            return True
+        if re.fullmatch(r"(?is)\s*<tools\b[^>]*>.*?</tools\s*>\s*", stripped):
+            return True
+        if re.fullmatch(r"(?is)\s*```json\s*.*?```\s*", stripped):
+            return True
+
+        if stripped.startswith(("{", "[")) and stripped.endswith(("}", "]")):
+            try:
+                parsed = json.loads(stripped)
+                if isinstance(parsed, (dict, list)):
+                    return True
+            except json.JSONDecodeError:
+                pass
+
+        residual = re.sub(
+            r"(?is)<function_?calls\b[^>]*>.*?</function_?calls\s*>",
+            " ",
+            stripped,
+        )
+        residual = re.sub(r"(?is)<tools\b[^>]*>.*?</tools\s*>", " ", residual)
+        residual = re.sub(r"(?is)```json\s*.*?```", " ", residual)
+        residual = re.sub(r"\s+", " ", residual).strip()
+
+        if not residual:
+            return True
+
+        compact = re.sub(r"[^A-Za-z0-9]+", "", residual)
+        return len(compact) <= 24
 
     @staticmethod
     def _normalize_argument_key(key: str) -> str:
@@ -991,6 +1060,9 @@ class BaseChannel(ABC):
             "threadid": "thread_id",
             "conversationid": "conversation_id",
             "userid": "user_id",
+            "numresults": "num_results",
+            "numresult": "num_results",
+            "scraperesults": "scrape_results",
         }
         return alias_map.get(cleaned, cleaned)
 
@@ -1014,6 +1086,9 @@ class BaseChannel(ABC):
         seen_call_keys: set[str] | None = None,
     ) -> list[str]:
         """Execute embedded `<tools>` calls when model returns text instead of real tool calls."""
+        if self._contains_embedded_tool_markup(content) and not self._is_predominantly_tool_payload(content):
+            return ["Error: model returned mixed content with tool-call markup. Please retry."]
+
         calls = self._extract_embedded_tool_calls(content)
         if not calls:
             if self._contains_embedded_tool_markup(content):
@@ -1049,6 +1124,7 @@ class BaseChannel(ABC):
                 continue
 
             try:
+                self._increment_fallback_tool_call_metric()
                 result = await tool.ainvoke(args)
                 outputs.append(str(result))
             except Exception as e:
