@@ -141,6 +141,52 @@ NEVER use write_todos for storing user's personal tasks - those belong in TDB.""
                 tool_description="Create or update the agent's internal execution task list (NOT for user todos - use TDB for user's persistent todos).",
             )
         )
+
+        # Register write_todos for XML parser compatibility
+        # The XML parser needs middleware tools registered in the tool registry
+        from langchain_core.tools import tool
+        from executive_assistant.tools.registry import register_middleware_tool
+
+        @tool
+        def write_todos(todos: list[dict]) -> str:
+            """Create and manage a structured task list for your current work session.
+
+            This tool helps you track your progress and shows the user what you're working on.
+            Use this for EVERY task - simple or complex.
+
+            Args:
+                todos: List of todo items with content and status fields.
+                       Each todo should have: {"content": "task description", "status": "pending|in_progress|completed"}
+
+            Returns:
+                Formatted todo list that will be shown to the user.
+            """
+            if not todos:
+                return ""
+
+            completed = sum(1 for t in todos if t.get("status") == "completed")
+            total = len(todos)
+
+            lines = [f"📋 Agent Task List ({completed}/{total} complete):"]
+
+            for todo in todos[:10]:
+                status = todo.get("status", "pending")
+                content = todo.get("content", "")
+
+                if status == "completed":
+                    lines.append(f"  ✅ {content}")
+                elif status == "in_progress":
+                    lines.append(f"  ⏳ {content}")
+                else:
+                    lines.append(f"  ⏳ {content}")
+
+            if len(todos) > 10:
+                remaining = len(todos) - 10
+                lines.append(f"  ... and {remaining} more")
+
+            return "\n".join(lines)
+
+        register_middleware_tool(write_todos)
         if settings.MW_STATUS_UPDATE_ENABLED and channel is not None:
             from executive_assistant.agent.todo_display import TodoDisplayMiddleware
             middleware.append(TodoDisplayMiddleware(channel=channel))

@@ -1104,10 +1104,12 @@ class BaseChannel(ABC):
                 return ["Error: could not parse model tool-call output. Please retry."]
             return []
 
-        from executive_assistant.tools.registry import get_all_tools
+        from executive_assistant.tools.registry import get_all_tools, get_middleware_tools
 
         tools = await get_all_tools()
-        tool_map = {getattr(t, "name", ""): t for t in tools}
+        middleware_tools = await get_middleware_tools()
+        all_tools = tools + middleware_tools
+        tool_map = {getattr(t, "name", ""): t for t in all_tools}
         outputs: list[str] = []
         tool_step = 0
 

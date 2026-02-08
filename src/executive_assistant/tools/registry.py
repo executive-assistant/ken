@@ -9,6 +9,7 @@ from langchain_core.tools import BaseTool
 logger = logging.getLogger(__name__)
 _mcp_client_cache: dict[str, Any] = {}
 _tools_cache: list[BaseTool] | None = None  # Cache for loaded tools
+_middleware_tools_cache: list[BaseTool] | None = None  # Cache for middleware tools
 
 
 def _normalize_tool(tool):
@@ -128,12 +129,6 @@ async def get_reminder_tools() -> list[BaseTool]:
     """Get reminder tools."""
     from executive_assistant.tools.reminder_tools import get_reminder_tools as _get
     return _get()
-
-
-async def get_todo_tools() -> list[BaseTool]:
-    """Get todo list tracking tool."""
-    from executive_assistant.tools.todo_tools import write_todos
-    return [write_todos]
 
 
 async def get_meta_tools() -> list[BaseTool]:
@@ -293,6 +288,30 @@ async def get_flow_tools() -> list[BaseTool]:
     return [create_flow, list_flows, run_flow, cancel_flow, delete_flow]
 
 
+def register_middleware_tool(tool: BaseTool) -> None:
+    """Register a middleware tool (e.g., from TodoListMiddleware).
+
+    Middleware tools are separate from agent tools and are used by the
+    XML parser to execute tool calls that middleware adds to the agent.
+
+    Args:
+        tool: The middleware tool to register.
+    """
+    global _middleware_tools_cache
+    _middleware_tools_cache = _middleware_tools_cache or []
+    _middleware_tools_cache.append(tool)
+    logger.debug(f"Registered middleware tool: {getattr(tool, 'name', tool)}")
+
+
+async def get_middleware_tools() -> list[BaseTool]:
+    """Get all middleware-registered tools.
+
+    Returns:
+        List of middleware tools (e.g., write_todos from TodoListMiddleware).
+    """
+    return _middleware_tools_cache or []
+
+
 async def get_tools_by_name(names: list[str]) -> list[BaseTool]:
     """Resolve tools by name from the registry."""
     all_tools = await get_all_tools()
@@ -336,7 +355,6 @@ async def get_all_tools() -> list[BaseTool]:
     all_tools.extend(await get_learning_tools())
     all_tools.extend(await get_time_tools())
     all_tools.extend(await get_reminder_tools())
-    all_tools.extend(await get_todo_tools())  # Todo list tracking tool
     # DISABLED: Flow tools - not production-ready yet
     # all_tools.extend(await get_flow_tools())
     all_tools.extend(await get_meta_tools())
