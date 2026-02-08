@@ -33,6 +33,7 @@ MODEL_PATTERNS = {
     "openai": r"^(gpt|o1)-",   # Must start with "gpt-" or "o1-"
     "zhipu": r"^glm-",         # Must start with "glm-"
     "ollama": r".+",            # Any pattern allowed for Ollama
+    "deepseek": r"^deepseek-",  # Must start with "deepseek-"
     "gemini": r"^gemini(?:-[\d\.]+)?(?:-[a-z]+(?:-[a-z0-9]+)?)?$",
     "qwen": r"^(?:qwen|qwq)(?:-[a-zA-Z0-9\.\+]+)*$",
     "kimi": r"^kimi-k2(?:\.[a-z0-9]+)?(?:-[a-z0-9]+)?$",
@@ -148,6 +149,9 @@ def validate_llm_config() -> None:
     if provider == "minimax":
         if not settings.MINIMAX_API_KEY:
             errors.append("MINIMAX_API_KEY not set for minimax provider.")
+    if provider == "deepseek":
+        if not settings.DEEPSEEK_API_KEY:
+            errors.append("DEEPSEEK_API_KEY not set for deepseek provider.")
 
     if errors:
         error_msg = "LLM configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
@@ -312,6 +316,48 @@ class LLMFactory:
         )
 
     @staticmethod
+    def _create_deepseek(model: str = "default", **kwargs) -> BaseChatModel:
+        """Create DeepSeek model using official LangChain integration.
+
+        Supports both official DeepSeek API and Ollama Cloud backend.
+
+        For official API:
+        - DEEPSEEK_API_KEY: Your DeepSeek API key
+        - DEEPSEEK_API_BASE: https://api.deepseek.com (default)
+
+        For Ollama Cloud backend:
+        - DEEPSEEK_API_KEY: Your Ollama Cloud API key
+        - DEEPSEEK_API_BASE: https://ollama.com
+        - Model names like "deepseek-v3.2:cloud" work seamlessly
+
+        The official integration provides proper tool calling support via
+        langchain-deepseek's bind_tools() method, eliminating the need for
+        custom XML parsers.
+        """
+        if not settings.DEEPSEEK_API_KEY:
+            raise ValueError("DEEPSEEK_API_KEY not set")
+
+        from langchain_deepseek import ChatDeepSeek
+
+        model_name = _get_model_config("deepseek", model)
+        api_base = settings.DEEPSEEK_API_BASE
+
+        # Build ChatDeepSeek kwargs
+        deepseek_kwargs = {
+            "model": model_name,
+            "api_key": settings.DEEPSEEK_API_KEY,
+            "temperature": kwargs.get("temperature", 0.7),
+            "max_tokens": kwargs.get("max_tokens", 8192),
+        }
+
+        # Set custom base_url if using non-default endpoint (e.g., Ollama Cloud)
+        if api_base != "https://api.deepseek.com":
+            deepseek_kwargs["base_url"] = api_base
+
+        deepseek_kwargs.update(kwargs)
+        return ChatDeepSeek(**deepseek_kwargs)
+
+    @staticmethod
     def _create_ollama(model: str = "default", **kwargs) -> BaseChatModel:
         """Create Ollama model (cloud or local).
 
@@ -465,7 +511,7 @@ class LLMFactory:
     def create(
         cls,
         provider: Literal[
-            "anthropic", "openai", "zhipu", "ollama", "gemini", "qwen", "kimi", "minimax"
+            "anthropic", "openai", "zhipu", "ollama", "deepseek", "gemini", "qwen", "kimi", "minimax"
         ] | None = None,
         model: str = "default",
         **kwargs,
@@ -474,7 +520,7 @@ class LLMFactory:
         Create a chat model instance.
 
         Args:
-            provider: LLM provider (anthropic, openai, zhipu, ollama, gemini, qwen, kimi, minimax).
+            provider: LLM provider (anthropic, openai, zhipu, ollama, deepseek, gemini, qwen, kimi, minimax).
                       Defaults to DEFAULT_LLM_PROVIDER.
             model: Model variant (default, fast) or specific model name. Defaults to "default".
             **kwargs: Additional model parameters.
@@ -491,6 +537,8 @@ class LLMFactory:
             return cls._create_openai(model, **kwargs)
         elif provider == "zhipu":
             return cls._create_zhipu(model, **kwargs)
+        elif provider == "deepseek":
+            return cls._create_deepseek(model, **kwargs)
         elif provider == "ollama":
             return cls._create_ollama(model, **kwargs)
         elif provider == "gemini":

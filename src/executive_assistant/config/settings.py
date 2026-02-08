@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     # ============================================================================
 
     DEFAULT_LLM_PROVIDER: Literal[
-        "anthropic", "openai", "zhipu", "ollama", "gemini", "qwen", "kimi", "minimax"
+        "anthropic", "openai", "zhipu", "ollama", "deepseek", "gemini", "qwen", "kimi", "minimax"
     ] = _yaml_field("LLM_DEFAULT_PROVIDER", "anthropic")
 
     # Global Model Overrides (apply to all providers)
@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     OPENAI_FAST_MODEL: str | None = _yaml_field("LLM_OPENAI_FAST_MODEL", None)
     ZHIPU_DEFAULT_MODEL: str | None = _yaml_field("LLM_ZHIPU_DEFAULT_MODEL", None)
     ZHIPU_FAST_MODEL: str | None = _yaml_field("LLM_ZHIPU_FAST_MODEL", None)
+    DEEPSEEK_DEFAULT_MODEL: str | None = _yaml_field(
+        "LLM_DEEPSEEK_DEFAULT_MODEL", "deepseek-chat"
+    )
+    DEEPSEEK_FAST_MODEL: str | None = _yaml_field(
+        "LLM_DEEPSEEK_FAST_MODEL", "deepseek-chat"
+    )
     OLLAMA_DEFAULT_MODEL: str | None = _yaml_field("LLM_OLLAMA_DEFAULT_MODEL", None)
     OLLAMA_FAST_MODEL: str | None = _yaml_field("LLM_OLLAMA_FAST_MODEL", None)
     GEMINI_DEFAULT_MODEL: str | None = _yaml_field("LLM_GEMINI_DEFAULT_MODEL", None)
@@ -77,6 +83,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str | None = None
     OPENAI_API_KEY: str | None = None
     ZHIPUAI_API_KEY: str | None = None
+    DEEPSEEK_API_KEY: str | None = None  # For DeepSeek (official API or Ollama Cloud)
 
     # New LLM Provider API Keys
     GOOGLE_API_KEY: str | None = None  # For Gemini
@@ -110,6 +117,14 @@ class Settings(BaseSettings):
         if not settings_obj.OLLAMA_CLOUD_API_KEY and settings_obj.OLLAMA_API_KEY:
             settings_obj.OLLAMA_CLOUD_API_KEY = settings_obj.OLLAMA_API_KEY
         return settings_obj
+
+    # ============================================================================
+    # DeepSeek Configuration
+    # ============================================================================
+
+    # DeepSeek API base URL (defaults to official API)
+    # Set to Ollama Cloud URL (e.g., "https://ollama.com") to use Ollama as backend
+    DEEPSEEK_API_BASE: str = _yaml_field("LLM_DEEPSEEK_API_BASE", "https://api.deepseek.com")
 
     # ============================================================================
     # Gemini Configuration

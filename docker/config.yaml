@@ -36,8 +36,8 @@ admin:
 
 # LLM Configuration
 llm:
-  # Default LLM provider: anthropic, openai, zhipu, ollama, gemini, qwen, kimi, minimax
-  default_provider: ollama
+  # Default LLM provider: anthropic, openai, zhipu, deepseek, ollama, gemini, qwen, kimi, minimax
+  default_provider: deepseek
 
   # Provider-specific model configurations
   anthropic:
@@ -51,6 +51,16 @@ llm:
   zhipu:
     default_model: glm-4.7
     fast_model: glm-4.7-flash
+
+  # DeepSeek (Official API)
+  deepseek:
+    default_model: deepseek-chat
+    fast_model: deepseek-chat
+    api_base: https://api.deepseek.com
+    # Models available:
+    # - deepseek-chat (V3): General purpose, excellent tool calling
+    # - deepseek-coder: Specialized for code generation
+    # - deepseek-reasoner: Advanced reasoning
 
   ollama:
     default_model: deepseek-v3.2:cloud

@@ -70,6 +70,7 @@ dependencies = [
     "playwright",
     "zen-engine>=0.51.0",
     "mcp>=1.19.0",
+    "langchain-deepseek>=1.0.1",
 ]
 
 [dependency-groups]
