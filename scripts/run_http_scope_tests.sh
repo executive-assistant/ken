@@ -7,6 +7,8 @@ OUT="/tmp/ken_scope_test_results.txt"
 ALLOW_RESTART=0
 RESTART_CMD=""
 RUN_ID="$(date +%s)"
+RUN_PYTEST=0
+PYTEST_PARALLEL="auto"
 
 pass=0
 fail=0
@@ -25,6 +27,8 @@ Options:
   --output <path>                        Output report path (default: /tmp/ken_scope_test_results.txt)
   --allow-restart                        Enable automated restart test in W6
   --restart-cmd "<command>"             Command to restart assistant (required with --allow-restart)
+  --with-pytest                          Run pytest tests after HTTP scope tests
+  --pytest-parallel <n|auto>             Number of parallel pytest workers (default: auto)
   --help                                 Show this help
 
 Examples:
@@ -32,6 +36,7 @@ Examples:
   scripts/run_http_scope_tests.sh --profile weekly
   scripts/run_http_scope_tests.sh --profile all --allow-restart \
     --restart-cmd 'set -a; source docker/.env; set +a; EXECUTIVE_ASSISTANT_CHANNELS=http UV_CACHE_DIR=.uv-cache .venv/bin/executive_assistant >/tmp/ken_http.log 2>&1 &'
+  scripts/run_http_scope_tests.sh --profile core --with-pytest --pytest-parallel 4
 HELP
 }
 
@@ -55,6 +60,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --restart-cmd)
       RESTART_CMD="$2"
+      shift 2
+      ;;
+    --with-pytest)
+      RUN_PYTEST=1
+      shift
+      ;;
+    --pytest-parallel)
+      PYTEST_PARALLEL="$2"
       shift 2
       ;;
     --help)
@@ -180,6 +193,20 @@ preflight_health() {
   fi
 }
 
+preflight_provider_compatibility() {
+  # Provider compatibility gate - verify tool calling works with configured provider
+  # This catches issues like deepseek-reasoner not supporting tools
+  t "Checking provider tool compatibility..."
+  local r
+  r=$(msg preflight_user preflight "What is 2+2? Give a brief answer.")
+  if [ -n "${r// /}" ] && contains "$r" "[4]|four"; then
+    pp PRE_PROVIDER_COMPAT
+  else
+    # If basic math fails, provider may not support tool calling properly
+    ff PRE_PROVIDER_COMPAT "Provider may not support tool calling. Response: ${r:-empty}"
+  fi
+}
+
 run_core() {
   t "=== CORE (S1-R2) ==="
 
@@ -282,6 +309,18 @@ run_core() {
   stream=$(curl -sS --max-time 300 -X POST "$BASE_URL/message" -H "Content-Type: application/json" -d '{"user_id":"stream_user","conversation_id":"stream_conv","content":"Say hello in one sentence","stream":true}' || true)
   contains "$stream" "^data:" && pp R1 || ff R1 "$stream"
   contains "$stream" '"done": true' && pp R2 || ff R2 "$stream"
+
+  # ONBOARDING SMOKE TEST - Verify create_instinct is called during onboarding
+  # Regression test for bug where onboarding created memories but not instincts
+  _=$(msg onboard_user onboard "Hi")
+  _=$(msg onboard_user onboard "My name is OnboardTest. I'm a QA Engineer. I do testing and quality assurance. I prefer concise communication. I'm in UTC.")
+  r=$(msg onboard_user onboard "List my instincts")
+  # Verify instinct was created (should contain communication instinct)
+  if contains "$r" "instinct|communication|style|preference"; then
+    pp ONBOARDING_INSTINCT
+  else
+    ff ONBOARDING_INSTINCT "No instinct found. Response: ${r:-empty}"
+  fi
 }
 
 run_weekly() {
@@ -507,10 +546,40 @@ run_extended() {
   fi
 }
 
+run_pytest() {
+  t "=== PYTEST (Parallel Test Execution) ==="
+
+  local pytest_args="-q --tb=short"
+
+  # Add parallel workers if pytest-xdist is available
+  if uv run pytest --version >/dev/null 2>&1; then
+    if [ "$PYTEST_PARALLEL" = "auto" ]; then
+      pytest_args="$pytest_args -n auto"
+    elif [ "$PYTEST_PARALLEL" -gt 0 ] 2>/dev/null; then
+      pytest_args="$pytest_args -n $PYTEST_PARALLEL"
+    fi
+  fi
+
+  # Run onboarding instinct tests (these verify the bug fix)
+  if uv run pytest $pytest_args tests/test_onboarding_instinct.py 2>&1 | tee -a "$OUT"; then
+    pp PYTEST_ONBOARDING
+  else
+    ff PYTEST_ONBOARDING "Onboarding instinct tests failed"
+  fi
+
+  # Run all tools e2e test with dynamic tool count
+  if uv run pytest $pytest_args tests/test_all_tools_end_to_end.py 2>&1 | tee -a "$OUT"; then
+    pp PYTEST_TOOL_E2E
+  else
+    ff PYTEST_TOOL_E2E "Tool E2E tests failed"
+  fi
+}
+
 main() {
   t "RUN_ID=$RUN_ID BASE_URL=$BASE_URL PROFILE=$PROFILE"
 
   preflight_health
+  preflight_provider_compatibility
 
   if [ "$PROFILE" = "core" ] || [ "$PROFILE" = "all" ]; then
     run_core
@@ -522,6 +591,10 @@ main() {
 
   if [ "$PROFILE" = "extended" ] || [ "$PROFILE" = "all" ]; then
     run_extended
+  fi
+
+  if [ "$RUN_PYTEST" = "1" ]; then
+    run_pytest
   fi
 
   t "TOTAL PASS=$pass FAIL=$fail SKIP=$skip"

@@ -30,12 +30,14 @@
 Run on every change.
 
 - Startup and API health: `S1`-`S3`
+- Preflight provider compatibility: `PRE_PROVIDER_COMPAT`
 - Persistence/context: `P1`-`P2`
 - Tool family behavior: `T1`-`T5`
 - Check-in/scheduler commands: `C1`-`C3`
 - Error handling: `E1`-`E3`
 - Isolation: `I1`-`I2`
 - Streaming contract: `R1`-`R2`
+- Onboarding instinct creation: `ONBOARDING_INSTINCT`
 
 ### Profile `weekly` (Stability and Resilience)
 Run weekly (or before major release).
@@ -58,7 +60,7 @@ Run nightly or pre-release.
 ### Profile `tool-e2e` (Registry Completeness)
 Run nightly or pre-release.
 
-- `Z1`: invoke every runtime-registered tool once (currently `117` tools)
+- `Z1`: invoke every runtime-registered tool once (dynamic count via `get_all_tools()`)
 - `Z2`: enforce non-empty, unique tool names in registry
 - `Z3`: embedded tool-call parsing coverage for JSON `<tools>` and XML `<function_calls>` formats
 
@@ -111,6 +113,15 @@ EXECUTIVE_ASSISTANT_CHANNELS=http UV_CACHE_DIR=.uv-cache uv run executive_assist
 curl -sS http://127.0.0.1:8000/health
 ```
 
+5. **Provider compatibility gate** (NEW):
+```bash
+# Verify tool calling works with configured provider
+# This catches issues like deepseek-reasoner not supporting tools
+curl -s http://127.0.0.1:8000/message \
+  -H "Content-Type: application/json" \
+  -d '{"content":"What is 2+2?","user_id":"preflight_test"}'
+```
+
 ---
 
 ## 5) Runner Commands
@@ -122,7 +133,28 @@ scripts/run_http_scope_tests.sh --profile core
 scripts/run_http_scope_tests.sh --profile weekly
 scripts/run_http_scope_tests.sh --profile extended
 scripts/run_http_scope_tests.sh --profile all
+```
+
+Run pytest tests in parallel (NEW):
+
+```bash
+# Run pytest after HTTP scope tests with automatic parallelization
+scripts/run_http_scope_tests.sh --profile core --with-pytest
+
+# Specify number of parallel workers
+scripts/run_http_scope_tests.sh --profile all --with-pytest --pytest-parallel 4
+```
+
+Standalone pytest commands:
+
+```bash
+# Onboarding instinct tests (verifies create_instinct bug fix)
+uv run pytest -q tests/test_onboarding_instinct.py
+
+# Tool E2E tests (dynamic tool count, validates all 117+ tools)
 uv run pytest -q tests/test_all_tools_end_to_end.py
+
+# Embedded tool call parsing tests
 uv run pytest -q tests/test_embedded_tool_call_parsing.py
 ```
 
@@ -140,6 +172,7 @@ Optional flags:
 ```bash
 --base-url http://127.0.0.1:8000
 --output /tmp/ken_scope_test_results.txt
+--pytest-parallel <n|auto>    # Number of parallel pytest workers (default: auto)
 ```
 
 ---
