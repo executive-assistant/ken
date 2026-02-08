@@ -87,7 +87,30 @@ def _build_middleware(model: BaseChatModel, channel: Any = None) -> list[Any]:
     if settings.MW_TODO_LIST_ENABLED:
         middleware.append(
             TodoListMiddleware(
-                system_prompt="""Use write_todos ONLY for tracking the agent's internal execution steps during a task.
+                system_prompt="""## `write_todos` - Task Tracking for Multi-Step Workflows
+
+Use the `write_todos` tool to show your plan for multi-step tasks.
+
+**DO NOT use write_todos for:**
+- Simple single-step queries (e.g., "What is 2+2?", "List memories")
+- Direct commands starting with `/` or `!` (e.g., `/mem list`, `!ls`)
+- Direct tool invocations (user explicitly names a tool)
+- Quick informational requests
+- Status checks
+
+**Use write_todos for:**
+- Multi-step tasks involving multiple tool calls
+- Complex workflows requiring problem breakdown
+- Tasks where showing progress builds user confidence
+- Work that spans multiple execution cycles
+
+**Process:**
+1. For multi-step tasks: FIRST call write_todos with your plan
+2. For commands/simple queries: Execute directly WITHOUT todos
+3. Mark steps complete as you work through them
+4. Keep todos updated as you learn more
+
+Remember: Use write_todos ONLY when it adds value - don't create noise for simple commands!
 
 CRITICAL: USER TODOS vs AGENT TODOS - Don't confuse them!
 

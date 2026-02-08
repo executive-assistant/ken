@@ -311,6 +311,12 @@ class TodoDisplayMiddleware(AgentMiddleware):
         if not last_ai_msg:
             return None
 
+        # DEBUG: Log all tool calls
+        tool_calls = last_ai_msg.tool_calls or []
+        if tool_calls:
+            for tc in tool_calls:
+                logger.info(f"TodoDisplayMiddleware: Tool call detected: {tc.get('name')}")
+
         # Check if write_todos was called
         write_todos_calls = [
             tc for tc in (last_ai_msg.tool_calls or [])
@@ -322,6 +328,7 @@ class TodoDisplayMiddleware(AgentMiddleware):
             # This is critical because the Command(update={"todos": ...}) hasn't
             # been applied to state yet when this hook runs
             todos = write_todos_calls[0].get("args", {}).get("todos", [])
+            logger.info(f"TodoDisplayMiddleware: write_todos called with {len(todos) if isinstance(todos, list) else 0} items")
             self._log_debug("write_todos", todo_count=len(todos) if isinstance(todos, list) else None)
             if todos:
                 await self._send_todo_list(todos)

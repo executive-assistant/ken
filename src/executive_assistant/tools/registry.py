@@ -130,6 +130,12 @@ async def get_reminder_tools() -> list[BaseTool]:
     return _get()
 
 
+async def get_todo_tools() -> list[BaseTool]:
+    """Get todo list tracking tool."""
+    from executive_assistant.tools.todo_tools import write_todos
+    return [write_todos]
+
+
 async def get_meta_tools() -> list[BaseTool]:
     """Get system metadata tools."""
     from executive_assistant.tools.meta_tools import get_meta_tools as _get
@@ -330,6 +336,7 @@ async def get_all_tools() -> list[BaseTool]:
     all_tools.extend(await get_learning_tools())
     all_tools.extend(await get_time_tools())
     all_tools.extend(await get_reminder_tools())
+    all_tools.extend(await get_todo_tools())  # Todo list tracking tool
     # DISABLED: Flow tools - not production-ready yet
     # all_tools.extend(await get_flow_tools())
     all_tools.extend(await get_meta_tools())
