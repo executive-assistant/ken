@@ -56,6 +56,14 @@ class HealthResponse(BaseModel):
     version: str = "1.0.0"
 
 
+class ResetRequest(BaseModel):
+    """Request model for resetting user data."""
+
+    user_id: str = Field(..., description="User/thread identifier")
+    conversation_id: str | None = Field(None, description="Conversation ID (optional)")
+    scope: str = Field("all", description="Reset scope: all, cache, or data")
+
+
 class HttpChannel(BaseChannel):
     """
     HTTP REST API channel with streaming support.
@@ -223,6 +231,71 @@ class HttpChannel(BaseChannel):
         async def health() -> HealthResponse:
             """Health check endpoint."""
             return HealthResponse(status="healthy", channel="http")
+
+        @self.app.post("/reset")
+        async def reset_endpoint(req: ResetRequest) -> dict[str, Any]:
+            """
+            Reset user data and/or agent cache.
+
+            Similar to Telegram /reset command but for HTTP.
+            """
+            from executive_assistant.config import settings
+            from executive_assistant.logging import get_logger, format_log_context
+            from executive_assistant.utils.onboarding import mark_force_onboarding
+
+            logger = get_logger(__name__)
+            conversation_id = req.conversation_id or f"http_{req.user_id}"
+            thread_id = f"http:{conversation_id}"
+            ctx = format_log_context("reset", channel="http", user=req.user_id, conversation=conversation_id)
+
+            deleted = []
+
+            try:
+                # Get user root directory
+                from pathlib import Path as PathLib
+                user_root = settings.get_thread_root(thread_id)
+
+                # Clear agent cache first (before deleting data)
+                if req.scope in ("all", "cache"):
+                    try:
+                        cleared_count = await self.clear_thread_agent_cache(thread_id)
+                        if cleared_count > 0:
+                            deleted.append(f"agent cache ({cleared_count} entries)")
+                        logger.info(f"{ctx} Cleared agent cache: {cleared_count} entries")
+                    except Exception as e:
+                        logger.warning(f"{ctx} Failed to clear agent cache: {e}")
+
+                # Delete user data directory
+                if req.scope == "all" and user_root.exists():
+                    try:
+                        import shutil
+                        shutil.rmtree(user_root)
+                        deleted.append("user data")
+                        logger.info(f"{ctx} Deleted user data: {user_root}")
+                    except Exception as e:
+                        logger.warning(f"{ctx} Failed to delete user data: {e}")
+
+                # Mark force onboarding
+                if req.scope == "all":
+                    try:
+                        mark_force_onboarding(thread_id)
+                        deleted.append("onboarding state")
+                        logger.info(f"{ctx} Marked force onboarding")
+                    except Exception as e:
+                        logger.warning(f"{ctx} Failed to mark onboarding: {e}")
+
+                if not deleted:
+                    return {"status": "warning", "message": "Nothing to reset or unable to delete requested scope."}
+
+                logger.info(f"{ctx} Reset complete: {', '.join(sorted(set(deleted)))}")
+                return {"status": "success", "deleted": sorted(set(deleted))}
+
+            except Exception as e:
+                logger.error(f"{ctx} Reset failed: {e}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Reset failed: {str(e)}"
+                )
 
         # ========================================================================
         # Google OAuth Endpoints
