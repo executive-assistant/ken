@@ -32,7 +32,7 @@ Planning transforms vague goals into actionable steps. This skill covers:
 - **Purpose:** Store the user's personal tasks and todo lists
 - **Storage:** Persistent TDB (SQLite) tables
 - **Example:** "meert ZK", "create companies for Steve", "call mom"
-- **Tools:** `create_tdb_table`, `insert_tdb_table`, `query_tdb_table`, `update_tdb_table`
+- **Tools:** `create_tdb_table`, `insert_tdb_table`, `query_tdb` (use SQL for updates)
 - **When to use:** When the user asks to "track my todos", "add to my todo list", etc.
 
 ### Quick Decision Tree
@@ -66,11 +66,7 @@ insert_tdb_table("todos", [
 query_tdb("SELECT * FROM todos WHERE status = 'pending' ORDER BY priority DESC")
 
 # Mark as complete
-update_tdb_table(
-    "todos",
-    '{"status": "completed"}',
-    where="id = 1"
-)
+query_tdb("UPDATE todos SET status = 'completed' WHERE id = 1")
 ```
 
 ---

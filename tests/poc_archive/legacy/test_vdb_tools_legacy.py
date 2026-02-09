@@ -1,13 +1,12 @@
 """Comprehensive tests for VDB (Vector Database) tools.
 
-This test suite covers all 7 VDB tools:
+This test suite covers current VDB tools:
 1. create_vdb_collection
 2. add_vdb_documents
 3. search_vdb
-4. list_vdb_collections
-5. vdb_list
-6. describe_vdb_collection
-7. drop_vdb_collection
+4. vdb_list
+5. describe_vdb_collection
+6. drop_vdb_collection
 """
 
 import pytest
@@ -15,14 +14,43 @@ from typing import Generator
 
 from executive_assistant.storage.thread_storage import set_thread_id
 from executive_assistant.storage.vdb_tools import (
-    create_vdb_collection,
-    add_vdb_documents,
-    search_vdb,
-    list_vdb_collections,
-    vdb_list,
-    describe_vdb_collection,
-    drop_vdb_collection,
+    create_vdb_collection as _create_vdb_collection_tool,
+    add_vdb_documents as _add_vdb_documents_tool,
+    search_vdb as _search_vdb_tool,
+    vdb_list as _vdb_list_tool,
+    describe_vdb_collection as _describe_vdb_collection_tool,
+    drop_vdb_collection as _drop_vdb_collection_tool,
 )
+
+
+def create_vdb_collection(**kwargs) -> str:
+    """Invoke StructuredTool in tests as a plain function."""
+    return _create_vdb_collection_tool.invoke(kwargs)
+
+
+def add_vdb_documents(**kwargs) -> str:
+    """Invoke StructuredTool in tests as a plain function."""
+    return _add_vdb_documents_tool.invoke(kwargs)
+
+
+def search_vdb(**kwargs) -> str:
+    """Invoke StructuredTool in tests as a plain function."""
+    return _search_vdb_tool.invoke(kwargs)
+
+
+def vdb_list(**kwargs) -> str:
+    """Invoke StructuredTool in tests as a plain function."""
+    return _vdb_list_tool.invoke(kwargs)
+
+
+def describe_vdb_collection(**kwargs) -> str:
+    """Invoke StructuredTool in tests as a plain function."""
+    return _describe_vdb_collection_tool.invoke(kwargs)
+
+
+def drop_vdb_collection(**kwargs) -> str:
+    """Invoke StructuredTool in tests as a plain function."""
+    return _drop_vdb_collection_tool.invoke(kwargs)
 
 
 # =============================================================================
@@ -231,17 +259,17 @@ class TestSearchVDB:
 
 
 # =============================================================================
-# Test: list_vdb_collections
+# Test: vdb_list
 # =============================================================================
 
 class TestListVDBCollections:
-    """Tests for list_vdb_collections tool."""
+    """Tests for vdb_list collection listing behavior."""
 
     def test_list_empty_collections(
         self, setup_thread_context: None
     ) -> None:
         """Test listing when no collections exist."""
-        result = list_vdb_collections(scope="context")
+        result = vdb_list(scope="context")
 
         assert "no collections" in result.lower() or "empty" in result.lower() or result == ""
 
@@ -254,7 +282,7 @@ class TestListVDBCollections:
         create_vdb_collection(collection_name="collection2", scope="context")
         create_vdb_collection(collection_name="collection3", scope="context")
 
-        result = list_vdb_collections(scope="context")
+        result = vdb_list(scope="context")
 
         assert "collection1" in result.lower() or "collection2" in result.lower()
 
@@ -341,7 +369,7 @@ class TestDropVDBCollection:
         assert "dropped" in result.lower() or "deleted" in result.lower()
 
         # Verify it's gone
-        collections = list_vdb_collections(scope="context")
+        collections = vdb_list(scope="context")
         assert "temp_collection" not in collections.lower()
 
     def test_drop_nonexistent_collection(
@@ -397,7 +425,7 @@ class TestVDBWorkflows:
         drop_vdb_collection(collection_name="test_lifecycle", scope="context")
 
         # 7. Verify deletion
-        collections = list_vdb_collections(scope="context")
+        collections = vdb_list(scope="context")
         assert "test_lifecycle" not in collections.lower()
 
     def test_semantic_search_workflow(
@@ -443,12 +471,12 @@ class TestVDBWorkflows:
         add_vdb_documents(collection_name="test_collection", documents=docs, scope="context")
 
         # Should exist in default thread
-        collections = list_vdb_collections(scope="context")
+        collections = vdb_list(scope="context")
         assert "test_collection" in collections.lower()
 
         # Switch to different thread
         set_thread_id("different_thread")
 
         # Collection should not exist in different thread
-        collections = list_vdb_collections(scope="context")
+        collections = vdb_list(scope="context")
         assert "test_collection" not in collections.lower()

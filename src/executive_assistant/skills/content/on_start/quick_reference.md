@@ -13,16 +13,17 @@ Tags: core, quickstart, reference, tools
 | **VDB** | `create_vdb_collection`, `add_vdb_documents`, `search_vdb`, `describe_vdb_collection`, `drop_vdb_collection`, `vdb_list`, `update_vdb_document`, `delete_vdb_documents` | Knowledge base, semantic search |
 | **ADB** | `list_adb_tables`, `describe_adb_table`, `show_adb_schema`, `query_adb`, `create_adb_table`, `import_adb_csv`, `export_adb_table`, `drop_adb_table`, `optimize_adb` | Analytics, complex SQL, large datasets |
 | **Memory** | `create_memory`, `get_memory_by_key`, `search_memories`, `list_memories`, `update_memory`, `delete_memory`, `forget_memory`, `normalize_or_create_memory` | User preferences, facts |
+| **Goals** | `create_goal`, `list_goals`, `update_goal` | Goal planning and progress tracking |
+| **Instincts** | `create_instinct`, `list_instincts`, `get_applicable_instincts`, `adjust_instinct_confidence` | Learned behavioral patterns |
 
 ## Automation Tools
 
 | Category | Tools | When to Use |
 |----------|-------|-------------|
-<!-- DISABLED: Flow tools - not production-ready yet -->
-<!-- | **Flows** | `create_flow`, `list_flows`, `run_flow`, `cancel_flow`, `delete_flow`, `create_flow_project` | Scheduled/multi-step workflows | -->
-<!-- DISABLED: Agent tools - not production-ready yet -->
-<!-- | **Agents** | `create_agent`, `list_agents`, `run_agent`, `get_agent`, `update_agent`, `delete_agent` | Specialized mini-agents for flows | -->
 | **Reminders** | `reminder_set`, `reminder_list`, `reminder_cancel`, `reminder_edit` | Future notifications |
+| **Check-ins** | `checkin_enable`, `checkin_disable`, `checkin_show`, `checkin_schedule`, `checkin_hours`, `checkin_test` | Proactive follow-up from journal/goals |
+
+Flow/agent builder tools are currently disabled in production runtime.
 
 ## External Tools
 
@@ -59,10 +60,12 @@ Tags: core, quickstart, reference, tools
 ```
 What do you need?
 ├─ Store user preference? → Memory
+├─ Track goals over time? → Goals
 ├─ Daily tracking (expenses, timesheets)? → TDB
 ├─ Complex analytics (window functions)? → ADB
 ├─ Document search by meaning? → VDB
-├─ Schedule automation? → Flows
+├─ Schedule reminders? → Reminders
+├─ Proactive follow-up? → Check-ins
 └─ Simple file storage? → Files
 ```
 
@@ -82,4 +85,4 @@ create_tdb_table("users", data='[{"name": "Alice", "age": 30}]')
 
 ## Load Detailed Skills
 
-For deep dives, say: `load_skill("storage")`, `load_skill("analytics")`<!-- DISABLED: `, `load_skill("flows")` -->
+For deep dives, say: `load_skill("data_management")`, `load_skill("analytics_with_duckdb")`, `load_skill("tool_combinations")`

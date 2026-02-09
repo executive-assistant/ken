@@ -88,6 +88,6 @@ What are you storing?
 ## Need Details?
 
 Load detailed guides:
-- `load_skill("storage")` - Deep dive into all storage types
-- `load_skill("analytics")` - Complex SQL, window functions
-- `load_skill("flows")` - Automation with flows and agents
+- `load_skill("data_management")` - Deep dive into all storage types
+- `load_skill("analytics_with_duckdb")` - Complex SQL, window functions
+- `load_skill("tool_combinations")` - Practical multi-tool workflows

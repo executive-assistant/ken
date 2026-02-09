@@ -38,6 +38,7 @@ Run on every change.
 - Isolation: `I1`-`I2`
 - Streaming contract: `R1`-`R2`
 - Onboarding instinct creation: `ONBOARDING_INSTINCT`
+- Tool registry completeness: `Z1`-`Z3` (tool-e2e included in core)
 
 ### Profile `weekly` (Stability and Resilience)
 Run weekly (or before major release).
@@ -64,8 +65,10 @@ Run nightly or pre-release.
 - `Z2`: enforce non-empty, unique tool names in registry
 - `Z3`: embedded tool-call parsing coverage for JSON `<tools>` and XML `<function_calls>` formats
 
+Note: `core` now already includes `Z1`-`Z3`. Use `tool-e2e` when you want this subset by itself.
+
 ### Profile `all`
-Run `core + weekly + extended + tool-e2e`.
+Run `core + weekly + extended`.
 
 ---
 
@@ -132,6 +135,7 @@ Use deterministic runner:
 scripts/run_http_scope_tests.sh --profile core
 scripts/run_http_scope_tests.sh --profile weekly
 scripts/run_http_scope_tests.sh --profile extended
+scripts/run_http_scope_tests.sh --profile tool-e2e
 scripts/run_http_scope_tests.sh --profile all
 ```
 
@@ -193,7 +197,7 @@ Optional flags:
 | Skills/instinct/profile flows | Yes | `extended` |
 | Learning pattern tools | Yes | `extended` |
 | Adhoc app-build scenarios | Yes | `extended` |
-| Full runtime tool inventory (117 tools) | Yes | `tool-e2e` |
+| Full runtime tool inventory (117 tools) | Yes | `core`, `tool-e2e` |
 | Restart persistence | Yes | `weekly` |
 
 ---
@@ -207,7 +211,7 @@ Release candidate is acceptable when:
 3. If `W6` restart automation is not enabled, report `W6` explicitly as `SKIP` with reason.
 4. No unhandled exceptions in server logs during executed profiles.
 5. LLM provider/mode in use is recorded in report metadata.
-6. `tool-e2e` profile passes (or failures are explicitly documented with per-tool reasons).
+6. `Z1`-`Z3` pass in `core` (or are explicitly documented with per-tool reasons).
 
 ---
 

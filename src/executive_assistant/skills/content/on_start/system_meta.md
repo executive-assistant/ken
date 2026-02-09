@@ -2,7 +2,7 @@
 
 Description: Overview of how the agent learns and adapts (full guide: `load_skill("system_patterns")`)
 
-Tags: core, system, meta, learning
+Tags: core, system, meta, memory, checkin
 
 ---
 
@@ -10,42 +10,43 @@ Tags: core, system, meta, learning
 
 The agent improves over time through **system-level patterns** (unlike user-facing patterns in `common_patterns.md`).
 
-### Key Patterns
+### Key Patterns (Current Runtime)
 
 | Pattern | Purpose | Learn More |
 |---------|---------|------------|
-| **Observer → Evolve** | Learn from interactions | `load_skill("system_patterns")` |
+| **4 Memory Pillars** | Persist user context and behavior state | `load_skill("system_patterns")` |
+| **Check-In Loop** | Proactive nudges from journal + goals | `load_skill("system_patterns")` |
 | **Token Budget** | Manage context efficiently | `load_skill("system_patterns")` |
 | **Middleware Stack** | Execution order matters | Built-in, automatic |
 | **Context Propagation** | ThreadContextMiddleware | Built-in, automatic |
 
 ---
 
-## Observer → Evolve (Learning)
+## Four Memory Pillars
 
-**Concept:** Agent observes your patterns and adapts behavior.
+**Concept:** User state is persisted in thread-scoped SQLite stores.
 
 ```
-Your actions → Observe → Store in Memory → Rollup → Evolve → Personalize
+Memory (mem.db): preferences/facts/profile/style/context
+Journal (journal.db): activity and rollups over time
+Goals (goals.db): goal state and progress
+Instincts (instincts.db): learned trigger->action behavior
 ```
 
-**Example:**
-- You say "add X" → Agent creates todo (not reminder)
-- Pattern detected → Memory: "User prefers todos for 'add X'"
-- Repeated 10x → Confidence: 90%
-- Promoted to rule → Agent auto-creates todos when you say "add X"
+Check-ins use journal + goals to produce proactive follow-up messages.
 
-**Status:** 🚧 Planned (see `/features/memory_time_tiers_plan.md`)
+All are active in current runtime.
 
 ---
 
 ## When to Use
 
 **Load full guide (`load_skill("system_patterns")`) when:**
-- Explaining how the agent learns
+- Explaining persistence and personalization
+- Tuning check-in behavior
 - Debugging token usage
 - Understanding middleware behavior
-- Implementing Observer-Evolve
+- Debugging thread context/tool-scoping issues
 
 ---
 
@@ -69,4 +70,3 @@ Choosing storage (TDB vs ADB vs VDB)?
 - `common_patterns.md` - User-facing workflow patterns
 - `decision_tree.md` - Storage decision guide
 - `quick_reference.md` - Tool reference
-- `/features/memory_time_tiers_plan.md` - Observer-Evolve implementation

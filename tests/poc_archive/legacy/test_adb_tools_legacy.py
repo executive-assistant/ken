@@ -8,11 +8,21 @@ This test suite covers all 2 ADB tools:
 import pytest
 from typing import Generator
 
-from executive_assistant.storage.thread_storage import set_thread_id, get_thread_adb_path
+from executive_assistant.storage.thread_storage import set_thread_id
 from executive_assistant.storage.adb_tools import (
-    create_adb_table,
-    query_adb,
+    create_adb_table as _create_adb_table_tool,
+    query_adb as _query_adb_tool,
 )
+
+
+def create_adb_table(**kwargs) -> str:
+    """Invoke StructuredTool in tests as a plain function."""
+    return _create_adb_table_tool.invoke(kwargs)
+
+
+def query_adb(**kwargs) -> str:
+    """Invoke StructuredTool in tests as a plain function."""
+    return _query_adb_tool.invoke(kwargs)
 
 
 # =============================================================================

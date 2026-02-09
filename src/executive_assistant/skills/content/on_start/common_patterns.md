@@ -56,27 +56,17 @@ query_adb("""
 export_adb_table("clean_data", "clean_data.csv")
 ```
 
-## Pattern 4: Schedule with Flows
+## Pattern 4: Schedule with Reminders + Check-In
 
 ```python
-# 1. Create specialized agent
-create_agent(
-    agent_id="reporter",
-    name="Daily Reporter",
-    description="Generate daily summary",
-    tools=["query_tdb", "write_file"],
-    system_prompt="Query timesheets and write summary to file"
-)
+# 1. Set a reminder for explicit deadlines
+reminder_set("Generate daily report", "every weekday at 9am")
 
-# 2. Create recurring flow
-create_flow(
-    name="daily_report",
-    description="Generate daily report at 9am",
-    agent_ids=["reporter"],
-    schedule_type="recurring",
-    cron_expression="0 9 * * *",
-    flow_input={"date": "today"}
-)
+# 2. Enable proactive check-in for pattern-based follow-up
+checkin_enable("1h", "24h")
+
+# 3. Restrict check-in to working hours
+checkin_hours("09:00", "18:00", "Mon,Tue,Wed,Thu,Fri")
 ```
 
 ## Pattern 5: Track User Todos
@@ -104,7 +94,7 @@ insert_tdb_table("todos", [
 query_tdb("SELECT * FROM todos WHERE status = 'pending' ORDER BY priority DESC")
 
 # 4. Mark complete
-update_tdb_table("todos", '{"status": "completed"}', where="id = 1")
+query_tdb("UPDATE todos SET status = 'completed' WHERE id = 1")
 ```
 
 **Key difference:**
@@ -131,7 +121,7 @@ get_memory_by_key("style")
 | Research & save | `search_web` → `write_file` → `add_vdb_documents` |
 | Report generation | `query_tdb`/`query_adb` → `execute_python` → `write_file` |
 | Data pipeline | `import_adb_csv` → `query_adb` → `export_adb_table` |
-| Automation | `create_agent` → `create_flow` → `run_flow` |
+| Automation | `reminder_set` → `checkin_enable` → `checkin_show` |
 
 ## Data Format Notes
 
@@ -176,4 +166,4 @@ create_memory("Prefers dark mode", "preference", key="theme")
 
 ## Load More Patterns
 
-For detailed workflows: `load_skill("workflows")` or `load_skill("tool_combinations")`
+For detailed workflows: `load_skill("tool_combinations")`

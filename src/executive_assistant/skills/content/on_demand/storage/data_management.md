@@ -197,7 +197,7 @@ query_adb("""
 create_memory("User prefers dark mode", "preference", key="theme")
 
 # Retrieve
-create_memory("", "preference", key="theme")
+get_memory_by_key("theme")
 # → User prefers dark mode
 ```
 

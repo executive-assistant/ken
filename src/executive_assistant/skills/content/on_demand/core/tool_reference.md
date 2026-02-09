@@ -9,8 +9,8 @@ Tags: core, tools, reference, guide, quickstart
 This skill provides a complete reference of all available tools. Use it to understand what tools exist and when to use each one.
 
 **Tool Categories:**
-- **Storage:** Files, TDB, VDB, ADB, Memories
-- **Automation:** Flows & Agents, Reminders
+- **Storage:** Files, TDB, VDB, ADB, Memories, Goals, Instincts
+- **Automation:** Reminders, Check-ins
 - **External:** Web Search, Browser, OCR
 - **Utility:** Python, Time, Meta
 
@@ -153,6 +153,53 @@ get_memory_by_key("theme")  # Returns: User prefers dark mode
 
 ---
 
+## Goals (3 tools)
+
+Structured goal management for each user thread.
+
+| Tool | Purpose |
+|------|---------|
+| `create_goal` | Create goal with priority/importance |
+| `list_goals` | List goals (filter by status/category) |
+| `update_goal` | Update goal fields and progress |
+
+**When to use:** Plan objectives and track progress over time.
+
+---
+
+## Instincts (13 tools)
+
+Learned behavioral patterns (trigger -> action), persisted per thread.
+
+| Tool | Purpose |
+|------|---------|
+| `create_instinct` | Create a behavioral rule |
+| `list_instincts` | List instincts |
+| `get_applicable_instincts` | Retrieve context-matched instincts |
+| `adjust_instinct_confidence` | Reinforce/weaken an instinct |
+| `enable_instinct` / `disable_instinct` | Toggle instinct status |
+
+**When to use:** Capture durable interaction style and behavior preferences.
+
+---
+
+## Check-ins (6 tools)
+
+Configure proactive follow-ups based on journal + goals.
+
+| Tool | Purpose |
+|------|---------|
+| `checkin_enable` | Enable check-in with schedule |
+| `checkin_disable` | Disable check-in |
+| `checkin_show` | Show current config |
+| `checkin_schedule` | Change frequency |
+| `checkin_hours` | Set active hours/days |
+| `checkin_test` | Run one immediate check |
+
+**When to use:** Ongoing coaching, progress nudges, periodic health checks.
+
+---
+
 ## Reminders (4 tools)
 
 Schedule notifications for future events.
@@ -178,62 +225,10 @@ reminder_set("Weekly report", "every friday at 4pm")
 
 ---
 
-## Flows & Agents (12 tools)
+## Flows & Agents
 
-Create automated workflows and specialized mini-agents.
-
-### Flow Management (5 tools)
-| Tool | Purpose |
-|------|---------|
-| `create_flow` | Create automated workflow |
-| `list_flows` | Show flows |
-| `run_flow` | Execute flow now |
-| `cancel_flow` | Cancel pending flow |
-| `delete_flow` | Remove flow |
-
-### Agent Management (6 tools)
-| Tool | Purpose |
-|------|---------|
-| `create_agent` | Define mini-agent |
-| `list_agents` | Show agents |
-| `get_agent` | View agent details |
-| `update_agent` | Modify agent |
-| `delete_agent` | Remove agent |
-| `run_agent` | Test agent once |
-
-### Project (1 tool)
-| Tool | Purpose |
-|------|---------|
-| `create_flow_project` | Create project template |
-
-**Flow Concepts:**
-- **Flow:** Sequence of agents that execute tasks
-- **Agent:** Specialized LLM with specific tools and prompt
-- **Schedule:** Immediate, one-time, or recurring (cron)
-
-**When to use:** Multi-step automation, scheduled reports, complex pipelines.
-
-**Example Workflow:**
-```python
-# 1. Create specialized agent
-create_agent(
-    agent_id="summarizer",
-    name="Document Summarizer",
-    description="Summarizes documents",
-    tools=["read_file", "write_file"],
-    system_prompt="Summarize the content of $input into bullet points"
-)
-
-# 2. Create flow that uses agent
-create_flow(
-    name="Daily Report",
-    description="Generate daily summary",
-    agent_ids=["summarizer"],
-    schedule_type="recurring",
-    cron_expression="0 9 * * *",  # Daily at 9am
-    flow_input={"document": "logs/daily.log"}
-)
-```
+Flow and agent builder tools are currently disabled in production runtime.
+Use reminders + check-ins for scheduling/proactive behavior instead.
 
 ---
 
@@ -293,15 +288,7 @@ firecrawl_scrape("https://docs.python.org/3/whatsnew/3.12.html")
 | Analytics, aggregations, large datasets | ADB | Columnar, fast queries |
 | User preferences, facts | Memories | Persistent key-value |
 
-**When to use Flows & Agents?**
-- Multi-step automation
-- Scheduled tasks
-- Complex pipelines with multiple specialized steps
-- Reusable components
-
-**When NOT to use Flows?**
-- Simple one-off tasks (use tools directly)
-- Interactive workflows (flows run asynchronously)
+Flow/agent builder tools are currently disabled in production runtime.
 
 ---
 
@@ -326,15 +313,15 @@ firecrawl_scrape("https://docs.python.org/3/whatsnew/3.12.html")
 
 **Automation:**
 - One-time future: `reminder_set()`
-- Recurring: Flow with `schedule_type="recurring"`
-- Multi-step: Flow with multiple agents
-- Conditional: Flow with custom agent logic
+- Recurring: `reminder_set("...", "every friday at 4pm")`
+- Proactive nudges: `checkin_enable()` + `checkin_show()`
+- Time window controls: `checkin_hours()`
 
 ---
 
 ## Related Skills
 
-- **analytics_duckdb** - Deep dive into ADB/analytics
+- **analytics_with_duckdb** - Deep dive into ADB/analytics
 - **tool_combinations** - Common workflow patterns
 - **data_management** - When to use which storage
-- **flows** - Detailed flow & agent creation
+- **system_patterns** - Runtime architecture and check-in behavior

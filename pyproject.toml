@@ -94,9 +94,12 @@ executive_assistant = "executive_assistant.main:run_main"
 executive_assistant-dev = "executive_assistant.dev_server:main"
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["tests/poc_archive"]
 markers = [
     "vcr: record/replay HTTP via VCR",
     "langchain_integration: live LLM integration tests",
+    "postgres: requires PostgreSQL",
 ]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"

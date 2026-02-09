@@ -20,10 +20,12 @@ Use the smallest set of tools that can solve the task. Prefer thread‑scoped da
 - **TDB (transactional):** `create_tdb_table`, `insert_tdb_table`, `query_tdb`, `list_tdb_tables`, `describe_tdb_table`, `delete_tdb_table`, `add_tdb_column`, `drop_tdb_column`, `import_tdb_table`, `export_tdb_table`
 - **VDB (semantic):** `create_vdb_collection`, `add_vdb_documents`, `add_file_to_vdb`, `search_vdb`, `describe_vdb_collection`, `vdb_list`, `update_vdb_document`, `delete_vdb_documents`, `drop_vdb_collection`
 - **ADB (analytics / DuckDB):** `list_adb_tables`, `describe_adb_table`, `show_adb_schema`, `query_adb`, `create_adb_table`, `import_adb_csv`, `export_adb_table`, `drop_adb_table`, `optimize_adb`
-- **Flows / agents:** `create_agent`, `list_agents`, `get_agent`, `update_agent`, `delete_agent`, `run_agent`, `create_flow`, `list_flows`, `run_flow`, `cancel_flow`, `delete_flow`, `create_flow_project`
+- **Goals:** `create_goal`, `list_goals`, `update_goal`
+- **Instincts:** `create_instinct`, `list_instincts`, `get_applicable_instincts`
 - **Web:** `search_web`, `firecrawl_scrape`, `firecrawl_crawl`, `firecrawl_check_status`, `playwright_scrape`
 - **OCR:** `ocr_extract_text`, `ocr_extract_structured`, `extract_from_image`
 - **Reminders:** `reminder_set`, `reminder_list`, `reminder_edit`, `reminder_cancel`
+- **Check-ins:** `checkin_enable`, `checkin_schedule`, `checkin_hours`, `checkin_show`, `checkin_test`, `checkin_disable`
 - **Memory:** `create_memory`, `list_memories`, `update_memory`, `forget_memory`
 - **Meta / inventory:** `get_meta`
 - **Confirmations:** `confirm_request`
@@ -41,15 +43,13 @@ Use the smallest set of tools that can solve the task. Prefer thread‑scoped da
 ## Common Workflow Patterns
 
 
-## Flow Automation (Executor Chains)
+## Reminder + Check-In Automation
 
-Use flows to run multi-step executor chains now or on a schedule.
+Use reminders for explicit scheduling and check-ins for proactive monitoring.
 
-**Tools:** `create_flow`, `list_flows`, `run_flow`, `cancel_flow`, `delete_flow`
+**Tools:** `reminder_set`, `reminder_list`, `checkin_enable`, `checkin_show`
 
-**When to use:** repetitive multi-step automations or scheduled pipelines.
-
-**Guardrail:** Flow agents may not call flow management tools (create/list/run/cancel/delete).
+**When to use:** recurring follow-ups, deadline nudges, and periodic "health" checks.
 
 ### Pattern 1: Query → Export → Save
 
@@ -474,5 +474,6 @@ cached = read_file("cache/week_3_metrics.json")
 Learn these patterns and you can accomplish complex tasks efficiently.
 
 
-## Flows
-For scheduled or multi-step execution, use the `flows` skill (see flows.md).
+## Scheduling Note
+Flow/agent builder skills are currently disabled in production runtime.
+Use reminders + check-ins for scheduling and proactive follow-up.
