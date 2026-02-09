@@ -268,6 +268,34 @@ class BaseChannel(ABC):
             while len(self._request_agent_cache) > self._agent_cache_max_entries:
                 self._request_agent_cache.popitem(last=False)
 
+    async def clear_thread_agent_cache(self, thread_id: str) -> int:
+        """Clear all cached agents for a specific thread.
+
+        This should be called when a thread's data is reset (e.g., /reset all)
+        to prevent stale agent state from being reused.
+
+        Args:
+            thread_id: Thread identifier to clear cache for
+
+        Returns:
+            Number of cache entries cleared
+        """
+        if not self._agent_cache_enabled:
+            return 0
+
+        cleared_count = 0
+        async with self._request_agent_cache_lock:
+            keys_to_delete = [
+                key
+                for key in self._request_agent_cache.keys()
+                if key.startswith(f"{thread_id}|")
+            ]
+            for key in keys_to_delete:
+                self._request_agent_cache.pop(key, None)
+                cleared_count += 1
+
+        return cleared_count
+
     async def _build_request_agent(
         self,
         message_text: str,

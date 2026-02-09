@@ -1161,6 +1161,14 @@ class TelegramChannel(BaseChannel):
             except Exception:
                 pass
 
+            # Clear agent cache to prevent stale state after reset
+            try:
+                cleared_count = await self.clear_thread_agent_cache(thread_id)
+                if cleared_count > 0:
+                    deleted.append(f"agent cache ({cleared_count} entries)")
+            except Exception as e:
+                logger.warning(f"Failed to clear agent cache for {thread_id}: {e}")
+
         if not deleted:
             return "⚠️ Nothing to reset or unable to delete requested scope."
         return "🔄 Reset complete: " + ", ".join(sorted(set(deleted)))
