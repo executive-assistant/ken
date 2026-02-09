@@ -362,7 +362,7 @@ async def main() -> None:
         logger.info(f'{format_log_context("system", component="shutdown")} stopping_scheduler')
         await stop_scheduler()
         logger.info(f'{format_log_context("system", component="shutdown")} cleaning_up_resources')
-        cleanup_all()
+        await cleanup_all()
         logger.info(f'{format_log_context("system", component="shutdown")} complete')
         print(" Bot stopped")
 

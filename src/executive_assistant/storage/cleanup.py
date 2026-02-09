@@ -35,14 +35,14 @@ def register_cache_clear(name: str, clear_func: Any) -> None:
     logger.debug(f"Registered cache clear function: {name}")
 
 
-def cleanup_all() -> None:
+async def cleanup_all() -> None:
     """Cleanup all registered resources.
-    
+
     This should be called during application shutdown to ensure
     all resources are properly released.
     """
     logger.info("Starting resource cleanup...")
-    
+
     # Clear all registered caches
     for name, clear_func in _cache_clear_functions:
         try:
@@ -50,9 +50,9 @@ def cleanup_all() -> None:
             logger.debug(f"Cleared cache: {name}")
         except Exception as e:
             logger.warning(f"Failed to clear cache {name}: {e}")
-    
+
     _cache_clear_functions.clear()
-    
+
     # Close LanceDB connections
     for conn in _lancedb_connections:
         try:
@@ -62,17 +62,17 @@ def cleanup_all() -> None:
             logger.debug(f"Closed LanceDB connection: {conn}")
         except Exception as e:
             logger.warning(f"Failed to close LanceDB connection: {e}")
-    
+
     _lancedb_connections.clear()
-    
+
     # Clear global checkpointer
     try:
         from executive_assistant.storage.checkpoint import close_checkpointer
-        close_checkpointer()
+        await close_checkpointer()
         logger.debug("Closed checkpointer")
     except Exception as e:
         logger.warning(f"Failed to close checkpointer: {e}")
-    
+
     # Clear MCP client cache
     try:
         from executive_assistant.tools.registry import clear_mcp_cache
@@ -80,7 +80,7 @@ def cleanup_all() -> None:
         logger.debug("Cleared MCP client cache")
     except Exception as e:
         logger.warning(f"Failed to clear MCP cache: {e}")
-    
+
     logger.info("Resource cleanup complete")
 
 
