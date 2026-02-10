@@ -175,17 +175,17 @@ class HttpChannel(BaseChannel):
                     logger.info(f"{ctx_system} ONBOARDING: Triggering onboarding for {thread_id} (reason={reason})")
                     # Mark onboarding as in-progress to prevent re-triggering
                     mark_onboarding_started(thread_id)
-                    # Add system note to trigger onboarding skill
-                    # The onboarding skill is loaded at startup (on_start) and will handle the flow
+                    # Add onboarding instruction - must be in message to work reliably
                     message.content += (
-                        "\n\n[SYSTEM: New user detected - onboarding required. "
-                        "CRITICAL onboarding flow: "
-                        "1. Call write_todos FIRST with your plan (5 steps: profile, timezone, instinct, complete, acknowledge) "
-                        "2. Ask 5 questions: name, role, responsibilities, communication preference, timezone "
-                        "3. AFTER receiving responses, call: create_user_profile, create_memory(timezone), create_instinct(communication), mark_onboarding_complete "
-                        "DO NOT include any greeting in your first response. "
-                        "The write_todos output will be shown to the user.]"
+                        "\n\n<<ONBOARDING_MODE>>"
+                        "\nCRITICAL: You MUST ONLY make tool calls. Do NOT include any conversational text."
+                        "\nExtract name, role, responsibilities from the user's message."
+                        "\nThen call: create_user_profile(name, role, responsibilities, 'professional')"
+                        "\nThen call: mark_onboarding_complete()"
+                        "\nReturn ONLY tool call results, no greetings or explanations."
+                        "<<END_ONBOARDING_MODE>>"
                     )
+                    logger.debug(f"{ctx_system} ONBOARDING: User message: {message.content[:200]}")
             except Exception as e:
                 logger.warning(f"{ctx_system} Onboarding check failed: {e}")
 

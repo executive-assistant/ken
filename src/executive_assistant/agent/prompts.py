@@ -189,7 +189,14 @@ def get_system_prompt(
         parts.append(appendix)
 
     # Join all layers with double newlines
-    return "\n\n".join(parts)
+    full_prompt = "\n\n".join(parts)
+
+    # Log system prompt for troubleshooting (debug level to avoid spamming)
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.debug(f"System prompt generated (thread_id={thread_id}, channel={channel}):\n{full_prompt[:2000]}...")
+
+    return full_prompt
 
 
 def load_instincts_context(thread_id: str, user_message: str | None = None) -> str:

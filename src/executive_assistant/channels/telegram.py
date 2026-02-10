@@ -1518,16 +1518,15 @@ class TelegramChannel(BaseChannel):
                     logger.info(f"{ctx} ONBOARDING: Triggering onboarding for {thread_id} (reason={reason})")
                     # Mark onboarding as in-progress to prevent re-triggering
                     mark_onboarding_started(thread_id)
-                    # Add system note to trigger onboarding skill
+                    # Add onboarding instruction - must be in message to work reliably
                     message.content += (
-                        "\n\n[SYSTEM: New user detected (empty data folder). "
-                        "Follow this onboarding flow: "
-                        "1. Welcome warmly: 'Hi! I'm Ken, your AI assistant. What do you do, and what would you like help with?' "
-                        "2. From their response, extract: name, role, responsibilities (comma-separated), communication preference (professional/casual/concise). "
-                        "3. Call create_user_profile(name, role, responsibilities, communication_preference) to store structured profile. "
-                        "4. Suggest 2-3 specific things you can CREATE based on their role (database, automation, workflow, reminders). "
-                        "5. Ask 'Should I set this up for you?' - if yes, create it immediately, then call mark_onboarding_complete(). "
-                        "Keep it BRIEF and conversational. Focus on learning about them, not explaining capabilities.]"
+                        "\n\n<<ONBOARDING_MODE>>"
+                        "\nCRITICAL: You MUST ONLY make tool calls. Do NOT include any conversational text."
+                        "\nExtract name, role, responsibilities from the user's message."
+                        "\nThen call: create_user_profile(name, role, responsibilities, 'professional')"
+                        "\nThen call: mark_onboarding_complete()"
+                        "\nReturn ONLY tool call results, no greetings or explanations."
+                        "<<END_ONBOARDING_MODE>>"
                     )
             except Exception as e:
                 logger.warning(f"{ctx} Onboarding check failed: {e}")
