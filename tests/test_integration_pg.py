@@ -83,15 +83,15 @@ class TestDatabaseSchema:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_scheduled_flows_table_exists(self, db_conn):
-        """Test that scheduled_flows table exists."""
+    async def test_scheduled_flows_table_not_exists(self, db_conn):
+        """Test that scheduled_flows table does not exist (feature removed)."""
         result = await db_conn.fetchval("""
             SELECT EXISTS (
                 SELECT FROM information_schema.tables
                 WHERE table_name = 'scheduled_flows'
             )
         """)
-        assert result is True
+        assert result is False
 
     @pytest.mark.asyncio
     async def test_reminders_table_exists(self, db_conn):

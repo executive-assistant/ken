@@ -282,18 +282,6 @@ def get_standard_tools() -> list[BaseTool]:
     return tools
 
 
-async def get_flow_tools() -> list[BaseTool]:
-    """Get flow scheduling/execution tools."""
-    from executive_assistant.tools.flow_tools import (
-        create_flow,
-        list_flows,
-        run_flow,
-        cancel_flow,
-        delete_flow,
-    )
-    return [create_flow, list_flows, run_flow, cancel_flow, delete_flow]
-
-
 def register_middleware_tool(tool: BaseTool) -> None:
     """Register a middleware tool (e.g., from TodoListMiddleware).
 
@@ -362,8 +350,6 @@ async def get_all_tools() -> list[BaseTool]:
     all_tools.extend(await get_learning_tools())
     all_tools.extend(await get_time_tools())
     all_tools.extend(await get_reminder_tools())
-    # DISABLED: Flow tools - not production-ready yet
-    # all_tools.extend(await get_flow_tools())
     all_tools.extend(await get_meta_tools())
     all_tools.extend(await get_python_tools())
     all_tools.extend(await get_search_tools())
@@ -373,21 +359,6 @@ async def get_all_tools() -> list[BaseTool]:
 
     from executive_assistant.tools.firecrawl_tool import get_firecrawl_tools
     all_tools.extend(get_firecrawl_tools())
-
-    # DISABLED: Agent tools - not production-ready yet
-    # from executive_assistant.tools.agent_tools import (
-    #     create_agent,
-    #     list_agents,
-    #     get_agent,
-    #     update_agent,
-    #     delete_agent,
-    #     run_agent,
-    # )
-    # all_tools.extend([create_agent, list_agents, get_agent, update_agent, delete_agent, run_agent])
-
-    # DISABLED: Flow project tools - not production-ready yet
-    # from executive_assistant.tools.flow_project_tools import create_flow_project
-    # all_tools.append(create_flow_project)
 
     from executive_assistant.tools.mcp_tools import get_mcp_config_tools
     all_tools.extend(get_mcp_config_tools())
@@ -448,8 +419,6 @@ def _matches_regex(text: str, patterns: list[str]) -> bool:
 
 async def get_tools_for_request(
     message_text: str,
-    *,
-    flow_mode: bool = False,
 ) -> list[BaseTool]:
     """
     Return a minimized tool list based on the user message.
@@ -469,19 +438,7 @@ async def get_tools_for_request(
     tools.extend(await get_skills_tools())
     tools.extend(await get_confirmation_tools())
 
-    if flow_mode or _text_has_any(message_text, ["flow", "flows", "agent", "agents"]):
-        from executive_assistant.tools.agent_tools import (
-            create_agent,
-            list_agents,
-            get_agent,
-            update_agent,
-            delete_agent,
-            run_agent,
-        )
-        tools.extend([create_agent, list_agents, get_agent, update_agent, delete_agent, run_agent])
-        tools.extend(await get_flow_tools())
-        from executive_assistant.tools.flow_project_tools import create_flow_project
-        tools.append(create_flow_project)
+
 
     if _text_has_any(message_text, ["file", "folder", "directory", "path", "read file", "write file", "list files"]):
         tools.extend(await get_file_tools())

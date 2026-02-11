@@ -24,11 +24,6 @@ from langgraph.types import Command
 from executive_assistant.config import settings
 from executive_assistant.storage.thread_storage import get_thread_id, set_thread_id
 from executive_assistant.agent.middleware_debug import MiddlewareDebug, RetryTracker
-from executive_assistant.agent.flow_mode import (
-    is_flow_mode_active,
-    is_flow_mode_enabled,
-    set_flow_mode_active,
-)
 from executive_assistant.logging import format_log_context, truncate_log_text
 
 if TYPE_CHECKING:
@@ -175,8 +170,7 @@ class StatusUpdateMiddleware(AgentMiddleware):
             logger.warning(f"{ctx} send status skipped: no conversation_id")
             return
 
-        if is_flow_mode_active() and message.startswith("🤔"):
-            message = message.replace("🤔", "🧐", 1)
+
         try:
             logger.debug(f'{ctx} send status text="{truncate_log_text(message)}"')
             await self.channel.send_status(
@@ -240,7 +234,7 @@ class StatusUpdateMiddleware(AgentMiddleware):
             # Extract conversation_id from thread_id (e.g., "telegram:123" -> "123")
             self.current_conversation_id = thread_id.split(":")[-1] if ":" in thread_id else thread_id
             # Sync flow mode ContextVar for this run (set at conversation scope)
-            set_flow_mode_active(is_flow_mode_enabled(self.current_conversation_id))
+            # Flow mode removed
             self._log_debug("start")
 
             # Initialize middleware debug tracking for this run (only if ContextVar is set)

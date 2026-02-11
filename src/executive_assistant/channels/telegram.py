@@ -39,7 +39,7 @@ from executive_assistant.config.settings import settings
 from executive_assistant.logging import format_log_context, truncate_log_text
 from executive_assistant.storage.user_registry import UserRegistry
 from executive_assistant.storage.user_allowlist import is_authorized
-from executive_assistant.agent.flow_mode import enable_flow_mode, disable_flow_mode, is_flow_mode_enabled, set_flow_mode_active
+# Flow mode removed
 from loguru import logger
 
 
@@ -812,10 +812,7 @@ class TelegramChannel(BaseChannel):
                 set_channel,
                 set_chat_type,
             )
-            from executive_assistant.agent.flow_mode import (
-                set_flow_mode_active,
-                is_flow_mode_enabled,
-            )
+
             channel = self.__class__.__name__.lower().replace("channel", "")
             config = {"configurable": {"thread_id": thread_id}}
 
@@ -823,7 +820,7 @@ class TelegramChannel(BaseChannel):
             set_thread_id(thread_id)
             set_channel(channel)
             set_chat_type("private")
-            set_flow_mode_active(is_flow_mode_enabled(batch[-1].conversation_id))
+            # Flow mode removed
             # Bootstrap check-in defaults for this user so proactive scheduler can discover it.
             try:
                 from executive_assistant.checkin.config import get_checkin_config
@@ -1447,7 +1444,7 @@ class TelegramChannel(BaseChannel):
         raw_text = update.message.text
         flow_prefix = raw_text.strip().lower().startswith("flow mode:")
         if flow_prefix:
-            enable_flow_mode(str(update.effective_chat.id))
+            # Flow mode removed
             await update.message.reply_text("I will build and test the agents + flow now.")
             raw_text = raw_text.split(":", 1)[1].strip() if ":" in raw_text else ""
             if not raw_text:

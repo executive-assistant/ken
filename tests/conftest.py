@@ -49,10 +49,7 @@ async def clean_test_data(db_conn: asyncpg.Connection) -> AsyncGenerator[None, N
     from relevant tables.
     """
     # Ensure legacy user_id columns are removed for thread-only schema
-    try:
-        await db_conn.execute("ALTER TABLE scheduled_flows DROP COLUMN IF EXISTS user_id")
-    except Exception:
-        pass
+
     try:
         await db_conn.execute("ALTER TABLE reminders DROP COLUMN IF EXISTS user_id")
     except Exception:

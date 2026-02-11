@@ -26,10 +26,6 @@ from executive_assistant.storage.thread_storage import (
     set_channel,
     set_chat_type,
 )
-from executive_assistant.agent.flow_mode import (
-    set_flow_mode_active,
-    is_flow_mode_enabled,
-)
 
 logger = get_logger(__name__)
 _fallback_tool_calls_ctx: contextvars.ContextVar[int] = contextvars.ContextVar(
@@ -47,7 +43,7 @@ _TOOL_INTENT_HINTS = (
     "tdb", "adb", "vdb", "python", "script", "code", "run ",
     "create", "insert", "update", "delete", "write", "read", "fetch", "summarize",
     "search", "web", "browse", "scrape", "crawl",
-    "reminder", "schedule", "todo", "checkin", "flow",
+    "reminder", "schedule", "todo", "checkin",
     "mcp", "server", "skill", "load_skill",
     "memory", "remember", "forget",
 )
@@ -483,7 +479,7 @@ class BaseChannel(ABC):
             set_thread_id(thread_id)
             set_channel(channel)
             set_chat_type("private")
-            set_flow_mode_active(is_flow_mode_enabled(message.conversation_id))
+            # Flow mode removed
 
             ctx_system = format_log_context("system", component="context", channel=channel, user=thread_id, conversation=message.conversation_id)
             logger.info(f"{ctx_system} set thread_id context")

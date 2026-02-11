@@ -1,9 +1,8 @@
-"""Scheduler for reminders, proactive check-ins, and scheduled flow handling using APScheduler.
+"""Scheduler for reminders and proactive check-ins using APScheduler.
 
 This module runs as a background task, polling the database for:
 1. Pending reminders - sends notifications
 2. Enabled check-ins - analyzes journal/goals and notifies on findings
-3. Scheduled flows - executes flow chains
 """
 
 import logging
@@ -15,7 +14,6 @@ from apscheduler.triggers.cron import CronTrigger
 
 from executive_assistant.logging import format_log_context
 from executive_assistant.storage.reminder import get_reminder_storage
-from executive_assistant.storage.scheduled_flows import get_scheduled_flow_storage
 from executive_assistant.utils.cron import parse_cron_next
 
 logger = logging.getLogger(__name__)
@@ -140,36 +138,7 @@ async def _process_pending_reminders():
         logger.error(f"Error processing pending reminders: {e}")
 
 
-async def _process_pending_flows():
-    """Check for and process pending scheduled flows.
 
-    This is called periodically by the scheduler.
-    Scheduled flows are executed in-process.
-    """
-    storage = await get_scheduled_flow_storage()
-
-    # Get flows due now or in the past
-    now = datetime.now()
-    try:
-        pending = await storage.get_due_flows(now)
-
-        if not pending:
-            return
-
-        logger.info(f"Processing {len(pending)} pending scheduled flow(s)")
-
-        from executive_assistant.flows.runner import execute_flow
-
-        for flow in pending:
-            try:
-                await execute_flow(flow)
-            except Exception as e:
-                logger.error(f"Flow {flow.id} execution failed: {e}", exc_info=True)
-
-        logger.info("Scheduled flows processed.")
-
-    except Exception as e:
-        logger.error(f"Error processing pending flows: {e}")
 
 
 async def _process_checkins():
@@ -239,14 +208,6 @@ async def start_scheduler():
         replace_existing=True,
     )
 
-    # Run at second 0 of every minute to align scans
-    _scheduler.add_job(
-        _process_pending_flows,
-        CronTrigger(second=0),
-        id="check_pending_flows",
-        replace_existing=True,
-    )
-
     # Run check-ins at second 30 every minute to stagger load.
     _scheduler.add_job(
         _process_checkins,
@@ -257,7 +218,7 @@ async def start_scheduler():
 
     _scheduler.start()
     ctx = format_log_context("system", component="scheduler")
-    logger.info(f"{ctx} started (reminders; check-ins; scheduled flows enabled)")
+    logger.info(f"{ctx} started (reminders; check-ins)")
     logger.debug(f"{ctx} start_scheduler returning")
 
 
