@@ -253,7 +253,36 @@ def read_file(file_path: str, scope: Literal["context", "shared"] = "context") -
 def write_file(
     file_path: str, content: str, scope: Literal["context", "shared"] = "context"
 ) -> str:
-    """Write text to a file (create or overwrite)."""
+    """Write text to a file (create or overwrite).
+
+    CRITICAL: The `content` parameter MUST be a STRING.
+    - For JSON files: Pass a JSON string, not a dict. Use json.dumps() first or write as string.
+    - For text files: Pass the text content directly as a string.
+
+    Examples:
+        write_file("config.json", '{"key": "value"}')  # Correct: JSON as string
+        write_file("notes.txt", "Hello world")          # Correct: Plain text
+
+    Common mistakes:
+        - write_file("config.json", {"key": "value"})  # WRONG: Don't pass dict directly
+        - write_file("data.json", data)                 # WRONG: Convert to string first
+
+    Args:
+        file_path: Path to the file (relative to sandbox root).
+        content: File content as a STRING (required, not a dict or object).
+        scope: "context" (default) for thread-scoped, "shared" for organization-wide.
+
+    Returns:
+        Success message with file path and byte count.
+    """
+    # Validate content type
+    if not isinstance(content, str):
+        return (
+            f"ERROR: `content` parameter must be a string, not {type(content).__name__}. "
+            f"If writing JSON, use json.dumps(your_dict) first to convert to string, "
+            f"or pass the JSON directly as a string like '{{\"key\": \"value\"}}'"
+        )
+
     sandbox = _get_sandbox_with_scope(scope)
     try:
         sandbox._validate_size(content)
