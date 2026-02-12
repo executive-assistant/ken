@@ -31,6 +31,7 @@ def get_langfuse_client():
     settings = get_settings()
 
     # Check if Langfuse is configured
+    logger.debug(f"Checking Langfuse config: secret_key_set={bool(settings.LANGFUSE_SECRET_KEY)}, public_key_set={bool(settings.LANGFUSE_PUBLIC_KEY)}")
     if not settings.LANGFUSE_SECRET_KEY or not settings.LANGFUSE_PUBLIC_KEY:
         logger.debug("Langfuse not configured (missing keys)")
         return None
@@ -38,7 +39,7 @@ def get_langfuse_client():
     try:
         from langfuse import Langfuse
 
-        # Initialize client (singleton)
+        # Initialize client (Langfuse() is the correct API for explicit credentials)
         _langfuse_client = Langfuse(
             secret_key=settings.LANGFUSE_SECRET_KEY,
             public_key=settings.LANGFUSE_PUBLIC_KEY,
@@ -77,7 +78,9 @@ def get_callback_handler():
         return _callback_handler
 
     # Check if client is available
+    logger.debug("Checking if Langfuse client is available...")
     if get_langfuse_client() is None:
+        logger.debug("Langfuse client not available, cannot create callback handler")
         return None
 
     try:
@@ -86,7 +89,7 @@ def get_callback_handler():
         # Create handler (no args needed in v3+)
         _callback_handler = CallbackHandler()
 
-        logger.debug("Langfuse CallbackHandler created")
+        logger.info("Langfuse CallbackHandler created successfully")
 
         return _callback_handler
 
