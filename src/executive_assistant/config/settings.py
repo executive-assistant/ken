@@ -340,6 +340,15 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = _yaml_field("LOGGING_LEVEL", "INFO")
     LOG_FILE: str | None = _yaml_field("LOGGING_FILE", None)
 
+    # ============================================================================
+    # Langfuse Observability
+    # ============================================================================
+
+    LANGFUSE_SECRET_KEY: str | None = None  # Secret
+    LANGFUSE_PUBLIC_KEY: str | None = None
+    LANGFUSE_BASE_URL: str = _yaml_field("LANGFUSE_BASE_URL", "https://cloud.langfuse.com")
+    LANGFUSE_TRACING_ENVIRONMENT: str = _yaml_field("LANGFUSE_TRACING_ENVIRONMENT", "production")
+
     # Firecrawl (web scraping API - external service, configure in .env)
     FIRECRAWL_API_KEY: str | None = None
     FIRECRAWL_API_URL: str = "https://api.firecrawl.dev"

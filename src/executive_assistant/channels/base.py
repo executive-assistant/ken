@@ -445,6 +445,17 @@ class BaseChannel(ABC):
             channel = self.__class__.__name__.lower().replace("channel", "")
             config = {"configurable": {"thread_id": thread_id}}
 
+            # Add Langfuse callback handler if enabled
+            try:
+                from executive_assistant.observability.langfuse_integration import get_callback_handler
+
+                langfuse_handler = get_callback_handler()
+                if langfuse_handler:
+                    config["callbacks"] = [langfuse_handler]
+                    logger.debug(f"{ctx} Langfuse tracing enabled")
+            except Exception as e:
+                logger.debug(f"{ctx} Failed to setup Langfuse tracing: {e}")
+
             # Set thread_id context for file sandbox operations
             set_thread_id(thread_id)
 
