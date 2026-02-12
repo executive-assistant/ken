@@ -133,28 +133,39 @@ def create_tdb_table(
 ) -> str:
     """Create a new table for structured data storage. [TDB]
 
-    USE THIS WHEN: Starting a new tracking task (timesheets, habits, expenses) or when you need queryable, tabular data for analysis.
+    CRITICAL: The `data` parameter format depends on how you call this tool:
 
-    See also: data_management skill for guidance on schema design.
+    **To create empty table with specific columns:**
+        create_tdb_table("users", columns="name,email,phone")
+        create_tdb_table("events", columns="id INTEGER PRIMARY KEY,title,date TEXT")
+
+    **To create table from data:**
+        create_tdb_table("users", data='[{"name": "Alice", "age": 30}]')
+        create_tdb_table("users", data='[{"name": "Bob"}, {"name": "Carol"}]')
+
+    Common mistakes:
+    - Passing a single dict instead of list: {"name": "Alice"}  WRONG
+    - Forgetting quotes in JSON string: [{name: Alice}]  WRONG
+    - Using Python dict syntax in tool call: data={"name": "Alice"}  WRONG
 
     Args:
-        table_name: Name for the new table (letters, numbers, underscore).
-        data: JSON string '[{"name": "Alice", "age": 30}]' OR list of dicts.
-              Leave empty to create empty table structure.
+        table_name: Name for the new table (letters, numbers, underscore only).
+        data: JSON array string '[{"name": "Alice", "age": 30}]' OR list of dicts.
+              Leave empty to create empty table with columns.
         columns: Comma-separated column names (e.g., "name,email,phone").
                Required when creating empty table; optional with data.
         scope: "context" (default) for thread-scoped storage,
                "shared" for organization-wide shared storage (admin-only writes).
 
     Returns:
-        Success message with row count or table schema.
+        Success message with row count or table schema, or error message.
     """
     import json
 
     # Handle empty data (create table structure only)
     if not data or (isinstance(data, str) and not data.strip()):
         if not columns:
-            return "Error: Either data or columns must be provided"
+            return "Error: Either data or columns must be provided to create a table"
 
         column_list = [col.strip() for col in columns.split(",")]
         # Add TEXT type to columns without explicit type
@@ -186,9 +197,22 @@ def create_tdb_table(
         try:
             parsed_data = json.loads(data)
         except json.JSONDecodeError as e:
-            return f'Error: Invalid JSON data - {str(e)}. Expected format: \'[{{"name": "Alice", "age": 30}}]\''
+            return (
+                f'Error: Invalid JSON in data parameter - {str(e)}.\n'
+                f'Expected format: \'[{{"name": "Alice", "age": 30}}]\' (JSON array string)\n'
+                f'Your data: {data[:200]}{"..." if len(data) > 200 else ""}'
+            )
     else:
-        return "Error: data must be a JSON string or list of dicts"
+        return (
+            f"Error: data parameter has wrong type ({type(data).__name__}). "
+            f"Must be a JSON string or list of dicts."
+        )
+
+    if not isinstance(parsed_data, list):
+        return (
+            f"Error: data must be a JSON array (list of objects), not a single object. "
+            f"Wrap your data in square brackets."
+        )
 
     # Determine column names
     column_list = None
@@ -197,7 +221,7 @@ def create_tdb_table(
     elif isinstance(parsed_data, list) and len(parsed_data) > 0 and isinstance(parsed_data[0], dict):
         column_list = list(parsed_data[0].keys())
     else:
-        return "Error: columns parameter required for array data"
+        return "Error: columns parameter required when providing array data (to define table schema)"
 
     try:
         db = _get_db_with_scope(scope)
@@ -222,16 +246,29 @@ def insert_tdb_table(
 ) -> str:
     """Add rows to an existing table. [TDB]
 
-    USE THIS WHEN: You need to add new records/entries to a table you've already created.
+    CRITICAL: The `data` parameter format depends on how you call this tool:
+
+    **OPTION 1 - Pass as JSON string (recommended for tool calls):**
+        insert_tdb_table("users", '[{"name": "Alice", "age": 30}]')
+        insert_tdb_table("users", '[{"name": "Bob"}, {"name": "Carol"}]')
+
+    **OPTION 2 - Pass as Python list (only in code, not in tool calls):**
+        insert_tdb_table("users", [{"name": "Alice", "age": 30}])
+
+    Common mistakes that cause errors:
+    - Passing a single dict: {"name": "Alice"}  WRONG - must be a list: [{"name": "Alice"}]
+    - Forgetting to JSON-encode when the model generates tool calls
+    - Missing quotes around keys in JSON string
 
     Args:
         table_name: Name of the table to insert into.
-        data: JSON string '[{"name": "Alice", "age": 30}]' OR list of dicts.
+        data: JSON array string '[{"name": "Alice", "age": 30}]' OR list of dicts.
+              MUST be an array (list), even for single row.
         scope: "context" (default) for thread-scoped storage,
                "shared" for organization-wide shared storage (admin-only writes).
 
     Returns:
-        Success message with row count.
+        Success message with row count, or error message with details.
     """
     import json
 
@@ -242,18 +279,28 @@ def insert_tdb_table(
         try:
             parsed_data = json.loads(data)
         except json.JSONDecodeError as e:
-            return f"Error: Invalid JSON data - {str(e)}. Expected format: '[{{\"name\": \"Alice\", \"age\": 30}}]'"
+            return (
+                f"Error: Invalid JSON in data parameter - {str(e)}.\n\n"
+                f"Expected format: '[{{\"name\": \"Alice\", \"age\": 30}}]' (JSON array string)\n"
+                f"Your data: {data[:200]}{'...' if len(data) > 200 else ''}"
+            )
     else:
-        return "Error: data must be a JSON string or list of dicts"
+        return (
+            f"Error: data parameter has wrong type ({type(data).__name__}). "
+            f"Must be a JSON string or list of dicts, not a single object/dict."
+        )
 
     if not isinstance(parsed_data, list):
-        return "Error: data must be a JSON array"
+        return (
+            f"Error: data must be a JSON array (list of dicts), not a single object. "
+            f"Wrap your data in square brackets: [{json.dumps(parsed_data)}]"
+        )
 
     try:
         db = _get_db_with_scope(scope)
 
         if not db.table_exists(table_name):
-            return f"Error: Table '{table_name}' does not exist"
+            return f"Error: Table '{table_name}' does not exist. Use create_tdb_table first, or list_tdb_tables to see available tables."
 
         db.append_to_table(table_name, parsed_data)
         return f"Inserted {len(parsed_data)} row(s) into '{table_name}'"

@@ -84,6 +84,13 @@ def _build_middleware(model: BaseChatModel, channel: Any = None) -> list[Any]:
     from executive_assistant.agent.thread_context_middleware import ThreadContextMiddleware
     middleware.append(ThreadContextMiddleware())
 
+    # Tool loop breaker (prevent infinite retry loops)
+    if settings.MW_TOOL_RETRY_ENABLED:
+        # Only enable circuit breaker if retry is enabled (to prevent loops)
+        from executive_assistant.agent.tool_loop_breaker import get_tool_loop_breaker
+        # Note: ToolLoopBreaker wraps the agent, not added to middleware list
+        # It's integrated via a different mechanism in create_langchain_agent
+
     if settings.MW_TODO_LIST_ENABLED:
         middleware.append(
             TodoListMiddleware(
