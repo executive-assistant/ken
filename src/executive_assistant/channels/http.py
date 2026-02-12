@@ -102,14 +102,16 @@ class HttpChannel(BaseChannel):
         self._server: Any = None
         self._stream_queues: dict[str, asyncio.Queue[dict[str, Any]]] = {}
         self._queue_locks: dict[str, asyncio.Lock] = {}
+        self._queue_locks_lock = asyncio.Lock()  # Protects _queue_locks dict
         self._pending_messages: dict[str, list[MessageFormat]] = {}
         self._inflight_tasks: dict[str, asyncio.Task] = {}
 
-    def _get_queue_lock(self, thread_id: str) -> asyncio.Lock:
-        """Get or create a queue lock for the given thread_id."""
-        if thread_id not in self._queue_locks:
-            self._queue_locks[thread_id] = asyncio.Lock()
-        return self._queue_locks[thread_id]
+    async def _get_queue_lock_async(self, thread_id: str) -> asyncio.Lock:
+        """Get or create a queue lock for the given thread_id (thread-safe)."""
+        async with self._queue_locks_lock:
+            if thread_id not in self._queue_locks:
+                self._queue_locks[thread_id] = asyncio.Lock()
+            return self._queue_locks[thread_id]
 
     def _setup_routes(self) -> None:
         """Setup API routes."""
@@ -423,7 +425,7 @@ class HttpChannel(BaseChannel):
         thread_id = self.get_thread_id(message)
         ctx = format_log_context("message", channel="http", user=message.user_id, conversation=message.conversation_id, type="text")
         logger.info(f'{ctx} recv text="{truncate_log_text(message.content)}"')
-        queue_lock = self._get_queue_lock(thread_id)
+        queue_lock = await self._get_queue_lock_async(thread_id)
         ack_needed = False
 
         async with queue_lock:
