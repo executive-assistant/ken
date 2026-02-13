@@ -968,6 +968,9 @@ class TelegramChannel(BaseChannel):
                 f"agent_cache_hit={build_meta.get('cache_hit', False)} tools_count={build_meta.get('tools_count', -1)}"
             )
             logger.info(f"Total request latency for {batch[-1].conversation_id}: {total_elapsed:.1f}s")
+            from executive_assistant.storage.thread_storage import clear_context
+
+            clear_context()
 
     async def _start_command(
         self,
@@ -1715,8 +1718,11 @@ class TelegramChannel(BaseChannel):
             error_msg = str(e) if str(e) else f"{type(e).__name__}"
             await update.message.reply_text(f"Sorry, an error occurred: {error_msg}")
         finally:
-            # Clean up thread_id and thread_id to avoid leaking context
-            from executive_assistant.storage.file_sandbox import clear_thread_id
-            from executive_assistant.storage.thread_storage import clear_thread_id
-            clear_thread_id()
-            clear_thread_id()
+            # Clean up file sandbox and thread request context.
+            from executive_assistant.storage.file_sandbox import (
+                clear_thread_id as clear_file_sandbox_thread_id,
+            )
+            from executive_assistant.storage.thread_storage import clear_context
+
+            clear_file_sandbox_thread_id()
+            clear_context()

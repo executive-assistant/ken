@@ -159,14 +159,14 @@ def temp_settings(tmp_path: Path):
 @pytest.fixture(autouse=True)
 def clean_context() -> Generator[None, None, None]:
     """Clean up context variables before and after each test."""
-    from executive_assistant.storage.thread_storage import clear_thread_id, set_thread_id
+    from executive_assistant.storage.thread_storage import clear_context, set_thread_id
 
     # Clean before
-    clear_thread_id()
+    clear_context()
     set_thread_id("")
 
     yield
 
     # Clean after
-    clear_thread_id()
+    clear_context()
     set_thread_id("")

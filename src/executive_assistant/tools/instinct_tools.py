@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from langchain_core.tools import tool
 
 from executive_assistant.storage.instinct_storage import get_instinct_storage
+from executive_assistant.tools.error_utils import tool_error_boundary
 
 
 def _utc_now() -> str:
@@ -18,6 +19,7 @@ def _utc_now() -> str:
 
 
 @tool
+@tool_error_boundary
 def create_instinct(
     trigger: str,
     action: str,
@@ -72,6 +74,7 @@ def create_instinct(
 
 
 @tool
+@tool_error_boundary
 def list_instincts(
     domain: str | None = None,
     min_confidence: float = 0.0,
@@ -121,6 +124,7 @@ def list_instincts(
 
 
 @tool
+@tool_error_boundary
 def adjust_instinct_confidence(
     instinct_id: str,
     delta: float,
@@ -169,6 +173,7 @@ def adjust_instinct_confidence(
 
 
 @tool
+@tool_error_boundary
 def get_applicable_instincts(
     context: str,
     max_count: int = 5,
@@ -210,6 +215,7 @@ def get_applicable_instincts(
 
 
 @tool
+@tool_error_boundary
 def disable_instinct(instinct_id: str) -> str:
     """
     Disable an instinct (stop applying it automatically).
@@ -246,6 +252,7 @@ def disable_instinct(instinct_id: str) -> str:
 
 
 @tool
+@tool_error_boundary
 def enable_instinct(instinct_id: str) -> str:
     """
     Re-enable a disabled instinct.
@@ -280,6 +287,7 @@ def enable_instinct(instinct_id: str) -> str:
 
 
 @tool
+@tool_error_boundary
 def evolve_instincts() -> str:
     """
     Evolve learned instincts into draft skills.
@@ -321,6 +329,7 @@ def evolve_instincts() -> str:
 
 
 @tool
+@tool_error_boundary
 def approve_evolved_skill(draft_id: str) -> str:
     """
     Approve a draft skill and save it as a user skill.
@@ -350,6 +359,7 @@ def approve_evolved_skill(draft_id: str) -> str:
 
 
 @tool
+@tool_error_boundary
 def export_instincts() -> str:
     """
     Export all instincts as JSON for backup or sharing.
@@ -374,6 +384,7 @@ def export_instincts() -> str:
 
 
 @tool
+@tool_error_boundary
 def import_instincts(json_data: str) -> str:
     """
     Import instincts from JSON (exported from another thread/user).
@@ -418,6 +429,7 @@ def import_instincts(json_data: str) -> str:
 
 
 @tool
+@tool_error_boundary
 def list_profiles() -> str:
     """
     List all available profile presets.
@@ -451,6 +463,7 @@ def list_profiles() -> str:
 
 
 @tool
+@tool_error_boundary
 def apply_profile(
     profile_id: str,
     clear_existing: bool = False,
@@ -493,6 +506,7 @@ def apply_profile(
 
 
 @tool
+@tool_error_boundary
 def create_custom_profile(
     name: str,
     description: str,

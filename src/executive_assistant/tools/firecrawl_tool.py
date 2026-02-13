@@ -10,11 +10,16 @@ from langchain_core.tools import tool
 import httpx
 
 from executive_assistant.config.settings import settings
+from executive_assistant.tools.error_utils import format_tool_error
 
 
 def _is_firecrawl_configured() -> bool:
     """Check if Firecrawl API key is configured."""
     return bool(settings.FIRECRAWL_API_KEY)
+
+
+def _firecrawl_not_configured_error() -> str:
+    return "Error: Firecrawl API key not configured. Set FIRECRAWL_API_KEY environment variable."
 
 
 async def _firecrawl_request(
@@ -84,7 +89,7 @@ async def firecrawl_scrape(
         "Scraped content from https://example.com:\\n\\n# Example Domain\\n..."
     """
     if not _is_firecrawl_configured():
-        return "Error: Firecrawl API key not configured. Set FIRECRAWL_API_KEY environment variable."
+        return _firecrawl_not_configured_error()
 
     try:
         # Parse formats
@@ -97,7 +102,7 @@ async def firecrawl_scrape(
         valid_formats = {"markdown", "html", "rawHtml", "links", "screenshot"}
         for fmt in format_list:
             if fmt not in valid_formats:
-                return f"Invalid format: '{fmt}'. Valid options: {', '.join(valid_formats)}"
+                return f"Error: Invalid format '{fmt}'. Valid options: {', '.join(sorted(valid_formats))}"
 
         payload = {
             "url": url,
@@ -137,11 +142,11 @@ async def firecrawl_scrape(
         return "\n".join(output)
 
     except httpx.HTTPStatusError as e:
-        return f"HTTP error {e.response.status_code}: {e.response.text}"
+        return f"Error: HTTP {e.response.status_code}: {e.response.text}"
     except httpx.RequestError as e:
-        return f"Request error: {e}"
+        return f"Error: Request failed: {e}"
     except Exception as e:
-        return f"Error scraping URL: {e}"
+        return format_tool_error(e)
 
 
 @tool
@@ -177,7 +182,7 @@ async def firecrawl_crawl(
         "Crawl started for https://example.com (max 5 pages)\\n\\n jobId: abc-123..."
     """
     if not _is_firecrawl_configured():
-        return "Error: Firecrawl API key not configured. Set FIRECRAWL_API_KEY environment variable."
+        return _firecrawl_not_configured_error()
 
     try:
         # Parse formats
@@ -209,11 +214,11 @@ async def firecrawl_crawl(
         return f"Crawl started for {url} (max {limit} pages)\n\nJob ID: {job_id}\nNote: This is an asynchronous operation. Use firecrawl_check_status to check progress."
 
     except httpx.HTTPStatusError as e:
-        return f"HTTP error {e.response.status_code}: {e.response.text}"
+        return f"Error: HTTP {e.response.status_code}: {e.response.text}"
     except httpx.RequestError as e:
-        return f"Request error: {e}"
+        return f"Error: Request failed: {e}"
     except Exception as e:
-        return f"Error starting crawl: {e}"
+        return format_tool_error(e)
 
 
 @tool
@@ -253,7 +258,7 @@ async def firecrawl_search(
         "Found 5 news results:\\n1. ..."
     """
     if not _is_firecrawl_configured():
-        return "Error: Firecrawl API key not configured. Set FIRECRAWL_API_KEY environment variable."
+        return _firecrawl_not_configured_error()
 
     try:
         # Parse sources
@@ -266,7 +271,7 @@ async def firecrawl_search(
         valid_sources = {"web", "news", "images"}
         for source in source_list:
             if source["type"] not in valid_sources:
-                return f"Invalid source: '{source['type']}'. Valid options: {', '.join(valid_sources)}"
+                return f"Error: Invalid source '{source['type']}'. Valid options: {', '.join(sorted(valid_sources))}"
 
         # Limit num_results
         num_results = max(1, min(20, int(num_results)))
@@ -320,11 +325,11 @@ async def firecrawl_search(
         return _format_scraped_search_results(web_results, query)
 
     except httpx.HTTPStatusError as e:
-        return f"HTTP error {e.response.status_code}: {e.response.text}"
+        return f"Error: HTTP {e.response.status_code}: {e.response.text}"
     except httpx.RequestError as e:
-        return f"Request error: {e}"
+        return f"Error: Request failed: {e}"
     except Exception as e:
-        return f"Search error: {type(e).__name__}: {e}"
+        return format_tool_error(e)
 
 
 def _format_basic_search_results(results: list, query: str, source_type: str) -> str:
@@ -387,7 +392,7 @@ async def firecrawl_check_status(job_id: str) -> str:
         "Crawl job abc-123-def status: completed\\n\\nTotal pages: 5\\n..."
     """
     if not _is_firecrawl_configured():
-        return "Error: Firecrawl API key not configured. Set FIRECRAWL_API_KEY environment variable."
+        return _firecrawl_not_configured_error()
 
     try:
         url = f"{settings.FIRECRAWL_API_URL}/v1/crawl/{job_id}"
@@ -432,11 +437,11 @@ async def firecrawl_check_status(job_id: str) -> str:
         return "\n".join(output)
 
     except httpx.HTTPStatusError as e:
-        return f"HTTP error {e.response.status_code}: {e.response.text}"
+        return f"Error: HTTP {e.response.status_code}: {e.response.text}"
     except httpx.RequestError as e:
-        return f"Request error: {e}"
+        return f"Error: Request failed: {e}"
     except Exception as e:
-        return f"Error checking job status: {e}"
+        return format_tool_error(e)
 
 
 def get_firecrawl_tools() -> list:
