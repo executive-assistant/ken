@@ -74,13 +74,8 @@ def _get_current_context_id() -> str:
     if thread_id:
         return thread_id
 
-    # Fallback to thread_id (legacy)
-    thread_id = get_thread_id()
-    if thread_id:
-        return thread_id
-
     raise ValueError(
-        "No context (thread_id or thread_id) available. "
+        "No thread_id context available. "
         "Transactional Database tools must be called from within a channel message handler."
     )
 

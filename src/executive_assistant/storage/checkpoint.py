@@ -338,6 +338,19 @@ async def close_checkpointer() -> None:
     """Close the checkpointer connection if applicable."""
     global _checkpointer
 
-    if _checkpointer is not None and hasattr(_checkpointer, 'conn'):
-        _checkpointer.conn.close()
+    if _checkpointer is None:
+        return
+
+    # Handle async checkpointer with connection
+    if hasattr(_checkpointer, 'conn'):
+        conn = _checkpointer.conn
+        # Check for async close method (AsyncConnection)
+        if hasattr(conn, 'close'):
+            close_method = conn.close
+            # Use asyncio to check if close is a coroutine function
+            import asyncio
+            if asyncio.iscoroutinefunction(close_method):
+                await close_method()
+            else:
+                close_method()
         _checkpointer = None

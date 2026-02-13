@@ -16,7 +16,7 @@ from executive_assistant.config import settings
 logger = logging.getLogger(__name__)
 from executive_assistant.storage.thread_storage import (
     set_thread_id,
-    clear_thread_id,
+    clear_context,
     set_channel,
     set_chat_type,
 )
@@ -72,11 +72,11 @@ async def _set_context(thread_id: str, chat_type: str | None = None) -> None:
     """Set thread context for storage operations."""
     set_thread_id(thread_id)
     set_channel("telegram")
-    set_chat_type("private")
+    set_chat_type(chat_type or "private")
 
 def _clear_context() -> None:
-    """Clear thread_id context."""
-    clear_thread_id()
+    """Clear request context."""
+    clear_context()
 
 # ==================== /mem COMMAND ====================
 

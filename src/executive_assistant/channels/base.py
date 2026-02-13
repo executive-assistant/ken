@@ -25,6 +25,7 @@ from executive_assistant.storage.thread_storage import (
     set_thread_id,
     set_channel,
     set_chat_type,
+    clear_context,
 )
 
 logger = get_logger(__name__)
@@ -759,6 +760,8 @@ class BaseChannel(ABC):
                 message.conversation_id,
                 f"Sorry, an error occurred: {e}",
             )
+        finally:
+            clear_context()
 
     def get_thread_id(self, message: MessageFormat) -> str:
         """

@@ -3,10 +3,12 @@
 from langchain_core.tools import tool
 
 from executive_assistant.storage.mem_storage import get_mem_storage
+from executive_assistant.tools.error_utils import tool_error_boundary
 
 
 
 @tool
+@tool_error_boundary
 def create_memory(
     content: str,
     memory_type: str = "fact",
@@ -63,6 +65,7 @@ def create_memory(
     return f"Memory saved with ID: {memory_id}"
 
 @tool
+@tool_error_boundary
 def update_memory(
     memory_id: str,
     content: str | None = None,
@@ -103,6 +106,7 @@ def update_memory(
 
 
 @tool
+@tool_error_boundary
 def delete_memory(memory_id: str) -> str:
     """
     Delete (soft delete) a memory by marking it as deleted.
@@ -125,6 +129,7 @@ def delete_memory(memory_id: str) -> str:
 
 
 @tool
+@tool_error_boundary
 def forget_memory(memory_id: str) -> str:
     """
     Forget a memory (alias to delete_memory).
@@ -149,6 +154,7 @@ def forget_memory(memory_id: str) -> str:
 
 
 @tool
+@tool_error_boundary
 def list_memories(
     memory_type: str | None = None,
     status: str = "active",
@@ -187,6 +193,7 @@ def list_memories(
 
 
 @tool
+@tool_error_boundary
 def search_memories(
     query: str,
     limit: int = 5,
@@ -231,6 +238,7 @@ def search_memories(
 
 
 @tool
+@tool_error_boundary
 def get_memory_by_key(key: str) -> str:
     """
     Get a memory by its key (most recent active).
@@ -259,6 +267,7 @@ def get_memory_by_key(key: str) -> str:
 
 
 @tool
+@tool_error_boundary
 def normalize_or_create_memory(
     key: str,
     content: str,
@@ -298,6 +307,7 @@ def normalize_or_create_memory(
 
 
 @tool
+@tool_error_boundary
 def get_memory_at_time(
     key: str,
     time: str,
@@ -337,6 +347,7 @@ def get_memory_at_time(
 
 
 @tool
+@tool_error_boundary
 def get_memory_history(key: str) -> str:
     """
     Get full version history of a memory key.
@@ -377,6 +388,7 @@ def get_memory_history(key: str) -> str:
 
 
 @tool
+@tool_error_boundary
 def mark_onboarding_complete() -> str:
     """
     Mark user onboarding as complete.
@@ -403,6 +415,7 @@ def mark_onboarding_complete() -> str:
 
 
 @tool
+@tool_error_boundary
 def create_user_profile(
     name: str,
     role: str,

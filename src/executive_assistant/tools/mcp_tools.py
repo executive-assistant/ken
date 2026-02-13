@@ -11,6 +11,7 @@ from executive_assistant.storage.mcp_storage import (
 )
 from executive_assistant.storage.file_sandbox import get_thread_id
 from executive_assistant.storage.user_allowlist import is_admin
+from executive_assistant.tools.error_utils import tool_error_boundary
 
 admin_root = settings.ADMINS_ROOT
 
@@ -34,6 +35,7 @@ def get_mcp_config_tools():
 
 
 @tool
+@tool_error_boundary
 def get_mcp_config() -> str:
     """Get current admin MCP configuration."""
     if not _ensure_admin():
@@ -95,6 +97,7 @@ def get_mcp_config() -> str:
 
 
 @tool
+@tool_error_boundary
 def reload_mcp_tools() -> str:
     """Reload MCP tools after modifying admin config."""
     if not _ensure_admin():
@@ -105,6 +108,7 @@ def reload_mcp_tools() -> str:
 
 
 @tool
+@tool_error_boundary
 def enable_mcp_tools(mode: Literal["default", "manual"] = "default") -> str:
     """Enable MCP tools globally (admin)."""
     if not _ensure_admin():
@@ -118,6 +122,7 @@ def enable_mcp_tools(mode: Literal["default", "manual"] = "default") -> str:
 
 
 @tool
+@tool_error_boundary
 def disable_mcp_tools() -> str:
     """Disable MCP tools globally (admin)."""
     if not _ensure_admin():
@@ -129,6 +134,7 @@ def disable_mcp_tools() -> str:
 
 
 @tool
+@tool_error_boundary
 def add_mcp_server(
     server_name: str,
     command: str,
@@ -162,6 +168,7 @@ def add_mcp_server(
 
 
 @tool
+@tool_error_boundary
 def remove_mcp_server(server_name: str) -> str:
     """Remove an MCP server from admin config."""
     if not _ensure_admin():

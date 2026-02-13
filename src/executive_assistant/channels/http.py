@@ -13,7 +13,7 @@ from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 from executive_assistant.channels.base import BaseChannel, MessageFormat
 from executive_assistant.config import settings
 from executive_assistant.logging import format_log_context, truncate_log_text
-from executive_assistant.storage.thread_storage import set_thread_id
+from executive_assistant.storage.thread_storage import clear_context, set_thread_id
 from executive_assistant.storage.user_registry import UserRegistry
 from executive_assistant.storage.user_allowlist import is_authorized
 from loguru import logger
@@ -102,14 +102,16 @@ class HttpChannel(BaseChannel):
         self._server: Any = None
         self._stream_queues: dict[str, asyncio.Queue[dict[str, Any]]] = {}
         self._queue_locks: dict[str, asyncio.Lock] = {}
+        self._queue_locks_lock = asyncio.Lock()  # Protects _queue_locks dict
         self._pending_messages: dict[str, list[MessageFormat]] = {}
         self._inflight_tasks: dict[str, asyncio.Task] = {}
 
-    def _get_queue_lock(self, thread_id: str) -> asyncio.Lock:
-        """Get or create a queue lock for the given thread_id."""
-        if thread_id not in self._queue_locks:
-            self._queue_locks[thread_id] = asyncio.Lock()
-        return self._queue_locks[thread_id]
+    async def _get_queue_lock_async(self, thread_id: str) -> asyncio.Lock:
+        """Get or create a queue lock for the given thread_id (thread-safe)."""
+        async with self._queue_locks_lock:
+            if thread_id not in self._queue_locks:
+                self._queue_locks[thread_id] = asyncio.Lock()
+            return self._queue_locks[thread_id]
 
     def _setup_routes(self) -> None:
         """Setup API routes."""
@@ -423,7 +425,7 @@ class HttpChannel(BaseChannel):
         thread_id = self.get_thread_id(message)
         ctx = format_log_context("message", channel="http", user=message.user_id, conversation=message.conversation_id, type="text")
         logger.info(f'{ctx} recv text="{truncate_log_text(message.content)}"')
-        queue_lock = self._get_queue_lock(thread_id)
+        queue_lock = await self._get_queue_lock_async(thread_id)
         ack_needed = False
 
         async with queue_lock:
@@ -463,6 +465,7 @@ class HttpChannel(BaseChannel):
             self._stream_queues.pop(message.conversation_id, None)
             if self._inflight_tasks.get(thread_id) is asyncio.current_task():
                 self._inflight_tasks.pop(thread_id, None)
+            clear_context()
 
         # Send final done signal
         yield "data: {\"done\": true}\n\n"
@@ -590,70 +593,72 @@ class HttpChannel(BaseChannel):
 
         config = {"configurable": {"thread_id": thread_id}}
         set_thread_id(thread_id)
-
-        # Collect all messages from stream
-        all_messages: list[BaseMessage] = []
-        embedded_seen: set[str] = set()
-        request_start = time.perf_counter()
-        build_start = time.perf_counter()
-        request_agent, build_meta = await self._build_request_agent(message.content, message.conversation_id)
-        build_agent_ms = (time.perf_counter() - build_start) * 1000.0
-        first_response_ms: float | None = None
-
-        async def _fallback_status(step: int, tool_name: str, _args: dict[str, Any]) -> None:
-            await self.send_status(message.conversation_id, f"🛠️ {step}: {tool_name}")
-
-        async for event in request_agent.astream(state, config):
-            messages = self._extract_messages_from_event(event)
-            new_messages = self._get_new_ai_messages(messages, message_id)
-            for msg in new_messages:
-                if isinstance(msg, AIMessage) and getattr(msg, "content", None):
-                    embedded_results = await self._execute_embedded_tool_calls(
-                        msg.content,
-                        embedded_seen,
-                        on_tool_start=_fallback_status,
-                    )
-                    if embedded_results:
-                        all_messages.append(AIMessage(content="\n".join(embedded_results)))
-                        if first_response_ms is None:
-                            first_response_ms = (time.perf_counter() - request_start) * 1000.0
-                        continue
-                all_messages.append(msg)
-                if first_response_ms is None and getattr(msg, "content", None):
-                    first_response_ms = (time.perf_counter() - request_start) * 1000.0
-
-        thread_timing = None
         try:
-            from executive_assistant.agent.status_middleware import pop_stage_timing
+            # Collect all messages from stream
+            all_messages: list[BaseMessage] = []
+            embedded_seen: set[str] = set()
+            request_start = time.perf_counter()
+            build_start = time.perf_counter()
+            request_agent, build_meta = await self._build_request_agent(message.content, message.conversation_id)
+            build_agent_ms = (time.perf_counter() - build_start) * 1000.0
+            first_response_ms: float | None = None
 
-            thread_timing = pop_stage_timing(thread_id)
-        except Exception:
+            async def _fallback_status(step: int, tool_name: str, _args: dict[str, Any]) -> None:
+                await self.send_status(message.conversation_id, f"🛠️ {step}: {tool_name}")
+
+            async for event in request_agent.astream(state, config):
+                messages = self._extract_messages_from_event(event)
+                new_messages = self._get_new_ai_messages(messages, message_id)
+                for msg in new_messages:
+                    if isinstance(msg, AIMessage) and getattr(msg, "content", None):
+                        embedded_results = await self._execute_embedded_tool_calls(
+                            msg.content,
+                            embedded_seen,
+                            on_tool_start=_fallback_status,
+                        )
+                        if embedded_results:
+                            all_messages.append(AIMessage(content="\n".join(embedded_results)))
+                            if first_response_ms is None:
+                                first_response_ms = (time.perf_counter() - request_start) * 1000.0
+                            continue
+                    all_messages.append(msg)
+                    if first_response_ms is None and getattr(msg, "content", None):
+                        first_response_ms = (time.perf_counter() - request_start) * 1000.0
+
             thread_timing = None
+            try:
+                from executive_assistant.agent.status_middleware import pop_stage_timing
 
-        model_ms = float((thread_timing or {}).get("model_total_ms", 0.0))
-        tools_ms = float((thread_timing or {}).get("tool_total_ms", 0.0))
-        total_ms = (time.perf_counter() - request_start) * 1000.0
-        first_ms = first_response_ms if first_response_ms is not None else -1.0
-        post_process_ms = max(total_ms - (build_agent_ms + model_ms + tools_ms), 0.0)
-        fallback_tool_calls = self._get_fallback_tool_call_metric()
-        ctx_perf = format_log_context(
-            "system",
-            component="perf",
-            channel="http",
-            user=thread_id,
-            conversation=message.conversation_id,
-        )
-        logger.info(
-            f"{ctx_perf} stage_timing_ms build_agent={build_agent_ms:.1f} model={model_ms:.1f} "
-            f"tools={tools_ms:.1f} post_process={post_process_ms:.1f} first_response={first_ms:.1f} "
-            f"total={total_ms:.1f} model_calls={int((thread_timing or {}).get('model_calls', 0))} "
-            f"tool_calls={int((thread_timing or {}).get('tool_calls', 0))} "
-            f"fallback_tool_calls={fallback_tool_calls} "
-            f"tool_profile={build_meta.get('tool_profile', 'unknown')} "
-            f"agent_cache_hit={build_meta.get('cache_hit', False)} tools_count={build_meta.get('tools_count', -1)}"
-        )
+                thread_timing = pop_stage_timing(thread_id)
+            except Exception:
+                thread_timing = None
 
-        return all_messages
+            model_ms = float((thread_timing or {}).get("model_total_ms", 0.0))
+            tools_ms = float((thread_timing or {}).get("tool_total_ms", 0.0))
+            total_ms = (time.perf_counter() - request_start) * 1000.0
+            first_ms = first_response_ms if first_response_ms is not None else -1.0
+            post_process_ms = max(total_ms - (build_agent_ms + model_ms + tools_ms), 0.0)
+            fallback_tool_calls = self._get_fallback_tool_call_metric()
+            ctx_perf = format_log_context(
+                "system",
+                component="perf",
+                channel="http",
+                user=thread_id,
+                conversation=message.conversation_id,
+            )
+            logger.info(
+                f"{ctx_perf} stage_timing_ms build_agent={build_agent_ms:.1f} model={model_ms:.1f} "
+                f"tools={tools_ms:.1f} post_process={post_process_ms:.1f} first_response={first_ms:.1f} "
+                f"total={total_ms:.1f} model_calls={int((thread_timing or {}).get('model_calls', 0))} "
+                f"tool_calls={int((thread_timing or {}).get('tool_calls', 0))} "
+                f"fallback_tool_calls={fallback_tool_calls} "
+                f"tool_profile={build_meta.get('tool_profile', 'unknown')} "
+                f"agent_cache_hit={build_meta.get('cache_hit', False)} tools_count={build_meta.get('tools_count', -1)}"
+            )
+
+            return all_messages
+        finally:
+            clear_context()
 
     async def _run_agent_stream(
         self,

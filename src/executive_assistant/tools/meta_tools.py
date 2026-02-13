@@ -8,9 +8,11 @@ from langchain_core.tools import tool
 
 from executive_assistant.storage.file_sandbox import get_thread_id
 from executive_assistant.storage.meta_registry import load_meta, refresh_meta, format_meta
+from executive_assistant.tools.error_utils import tool_error_boundary
 
 
 @tool
+@tool_error_boundary
 async def get_meta(format: str = "text", refresh: bool = False) -> str:
     """
     View thread system inventory (files/KB/TDB/VDB/reminders).

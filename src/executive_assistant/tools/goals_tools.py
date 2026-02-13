@@ -6,6 +6,7 @@ from langchain_core.tools import tool
 
 from executive_assistant.storage.file_sandbox import get_thread_id
 from executive_assistant.storage.goals_storage import get_goals_storage
+from executive_assistant.tools.error_utils import tool_error_boundary
 
 
 def _require_thread_id() -> str:
@@ -32,6 +33,7 @@ def _resolve_goal_id(goal_id_or_prefix: str, thread_id: str) -> tuple[str | None
 
 
 @tool
+@tool_error_boundary
 def create_goal(
     title: str,
     category: str = "short_term",
@@ -74,6 +76,7 @@ def create_goal(
 
 
 @tool
+@tool_error_boundary
 def list_goals(
     status: str | None = None,
     category: str | None = None,
@@ -114,6 +117,7 @@ def list_goals(
 
 
 @tool
+@tool_error_boundary
 def update_goal(
     goal_id: str,
     title: str | None = None,
@@ -206,4 +210,3 @@ def update_goal(
 def get_goals_tools() -> list:
     """Get all goals tools for the agent."""
     return [create_goal, list_goals, update_goal]
-

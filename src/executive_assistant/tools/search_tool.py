@@ -11,6 +11,7 @@ import asyncio
 from langchain_core.tools import tool
 
 from executive_assistant.config.settings import settings
+from executive_assistant.tools.error_utils import format_tool_error
 
 
 @tool
@@ -55,7 +56,7 @@ def search_web(query: str, num_results: int = 5, scrape_results: bool = False) -
         }))
         return result
     except Exception as e:
-        return f"Search error: {type(e).__name__}: {e}"
+        return format_tool_error(e)
 
 
 def get_search_tools() -> list:
