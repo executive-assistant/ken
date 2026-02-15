@@ -1,36 +1,41 @@
-FROM python:3.13-slim
-
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    OMP_NUM_THREADS=4 \
-    MKL_NUM_THREADS=4
+FROM python:3.13-slim AS base
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir uv
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONFAULTHANDLER=1
 
-# System dependencies (OCR + shell tools)
-RUN apt-get update && apt-get install -y \
-  libgomp1 libglib2.0-0 libsm6 libxext6 libxrender-dev libgl1 \
-  git curl jq ripgrep bash \
-  && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create user first
-RUN useradd -m -u 1000 ken
+FROM base AS builder
 
-# Copy dependency files and install as the ken user
-COPY README.md .python-version pyproject.toml uv.lock ./
-RUN chown -R ken:ken /app
-USER ken
-RUN uv sync --frozen
+RUN pip install uv
 
-# Switch back to root to copy application files, then back to ken
-USER root
-COPY . .
-RUN chown -R ken:ken /app
-RUN mkdir -p /app/data /app/logs && chown -R ken:ken /app/data /app/logs
-USER ken
+COPY pyproject.toml .
+
+RUN uv pip install --system --no-cache .
+
+FROM base AS runtime
+
+COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+COPY src/ ./src/
+
+RUN adduser --disabled-password --gecos '' appuser && \
+    chown -R appuser:appuser /app
+
+USER appuser
+
+ENV PYTHONPATH=/app
 
 EXPOSE 8000
 
-CMD ["uv", "run", "executive_assistant"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+
+CMD ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

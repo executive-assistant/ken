@@ -7,9 +7,12 @@ services:
       - "8000:8000"
     environment:
       - DATABASE_URL=postgresql://agent:${POSTGRES_PASSWORD:-password}@postgres:5432/agent
+      - APP_ENV=development
+      - APP_DEBUG=true
     env_file:
       - ../.env
     volumes:
+      - ../src:/app/src:ro
       - ../data:/data
     depends_on:
       postgres:
@@ -17,6 +20,7 @@ services:
     restart: unless-stopped
     networks:
       - ken-network
+    command: uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
 
   postgres:
     image: postgres:16-alpine
@@ -25,7 +29,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
       POSTGRES_DB: agent
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data_dev:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
@@ -38,7 +42,7 @@ services:
       - ken-network
 
 volumes:
-  postgres_data:
+  postgres_data_dev:
 
 networks:
   ken-network:

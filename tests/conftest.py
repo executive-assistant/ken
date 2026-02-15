@@ -1,172 +1,119 @@
-"""Shared fixtures and configuration for pytest."""
-
-import asyncio
+import os
+from collections.abc import Generator
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
-from typing import AsyncGenerator, Generator
+from unittest.mock import patch
 
 import pytest
-import asyncpg
-
-from executive_assistant.config import settings
-
-
-# =============================================================================
-# Asyncio Configuration
-# =============================================================================
-
-@pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for the test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
-# =============================================================================
-# PostgreSQL Fixtures
-# =============================================================================
-
-@pytest.fixture
-async def db_conn() -> AsyncGenerator[asyncpg.Connection, None]:
-    """Create a database connection for testing.
-
-    This fixture provides a real PostgreSQL connection for integration tests.
-    Tests should clean up any data they create.
-    """
-    conn = await asyncpg.connect(settings.POSTGRES_URL)
-    try:
-        yield conn
-    finally:
-        await conn.close()
 
 
 @pytest.fixture
-async def clean_test_data(db_conn: asyncpg.Connection) -> AsyncGenerator[None, None]:
-    """Clean up test data before and after each test.
+def clean_env() -> Generator[None, None, None]:
+    from src.config import settings as settings_module
+    from src.llm import factory as factory_module
+    from src.observability import langfuse as langfuse_module
+    from src.storage import postgres as postgres_module
 
-    This fixture deletes test data (thread_id starting with 'test_')
-    from relevant tables.
-    """
-    # Ensure legacy user_id columns are removed for thread-only schema
+    settings_module._settings = None
+    factory_module._factory = None
+    langfuse_module._langfuse_client = None
+    postgres_module._postgres_connection = None
 
-    try:
-        await db_conn.execute("ALTER TABLE reminders DROP COLUMN IF EXISTS user_id")
-    except Exception:
-        pass
-    # Ensure thread_id column exists on reminders (legacy schemas may lack it)
-    try:
-        await db_conn.execute(
-            """
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM information_schema.columns
-                    WHERE table_name = 'reminders'
-                      AND column_name = 'thread_id'
-                ) THEN
-                    ALTER TABLE reminders ADD COLUMN thread_id VARCHAR(255);
-                END IF;
-            END $$;
-            """
+    original_env = os.environ.copy()
+    env_vars_to_clear = [
+        k
+        for k in os.environ
+        if k.startswith(
+            (
+                "OPENAI_",
+                "ANTHROPIC_",
+                "GOOGLE_",
+                "AZURE_",
+                "GROQ_",
+                "LANGFUSE_",
+                "DATABASE_",
+                "DEFAULT_",
+                "SUMMARIZATION_",
+                "TELEGRAM_",
+                "APP_",
+                "DATA_PATH",
+            )
         )
-    except Exception:
-        pass
-    # Ensure tdb_paths table exists for integration tests
-    try:
-        await db_conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS tdb_paths (
-                tdb_path TEXT NOT NULL,
-                thread_id VARCHAR(255) NOT NULL,
-                channel VARCHAR(50) NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW()
-            );
-            """
-        )
-    except Exception:
-        pass
-
-    # Clean up before test
-    await db_conn.execute("DELETE FROM scheduled_flows WHERE thread_id LIKE 'test_%'")
-
+    ]
+    for key in env_vars_to_clear:
+        del os.environ[key]
     yield
+    os.environ.clear()
+    os.environ.update(original_env)
+    settings_module._settings = None
+    factory_module._factory = None
+    langfuse_module._langfuse_client = None
+    postgres_module._postgres_connection = None
 
-    # Clean up after test
-    await db_conn.execute("DELETE FROM scheduled_flows WHERE thread_id LIKE 'test_%'")
-
-
-# =============================================================================
-# Mock Database Fixtures
-# =============================================================================
 
 @pytest.fixture
-def mock_conn() -> AsyncMock:
-    """Create a mock database connection."""
-    conn = AsyncMock()
-    conn.execute = AsyncMock()
-    conn.fetchrow = AsyncMock()
-    conn.fetch = AsyncMock()
-    conn.fetchval = AsyncMock(return_value=None)
-    conn.transaction = MagicMock()
-    conn.transaction.__aenter__ = AsyncMock()
-    conn.transaction.__aexit__ = AsyncMock()
-    return conn
-
-
-# =============================================================================
-# Temporary Directory Fixtures
-# =============================================================================
-
-@pytest.fixture
-def temp_root(tmp_path: Path) -> Path:
-    """Create a temporary root directory for tests."""
-    root = tmp_path / "data"
-    root.mkdir(parents=True, exist_ok=True)
-    return root
-
-
-# =============================================================================
-# Settings Patches
-# =============================================================================
-
-@pytest.fixture
-def temp_settings(tmp_path: Path):
-    """Patch settings with temporary paths."""
-    from unittest.mock import patch
-
-    temp_root = tmp_path / "data"
-    temp_root.mkdir(parents=True, exist_ok=True)
-
-    patches = {
-        "USERS_ROOT": temp_root / "users",
-        "SHARED_ROOT": temp_root / "shared",
+def mock_env_with_openai(clean_env: None) -> dict[str, str]:
+    env = {
+        "OPENAI_API_KEY": "sk-test-key-12345",
+        "DEFAULT_MODEL": "openai/gpt-4o",
+        "SUMMARIZATION_MODEL": "openai/gpt-4o-mini",
+        "DATABASE_URL": "postgresql://test:test@localhost:5432/test",
     }
-
-    # Create directories
-    for path in patches.values():
-        path.mkdir(parents=True, exist_ok=True)
-
-    with patch.multiple(settings, **patches):
-        yield settings
+    with patch.dict(os.environ, env, clear=False):
+        yield env
 
 
-# =============================================================================
-# Context Cleanup
-# =============================================================================
+@pytest.fixture
+def mock_env_with_anthropic(clean_env: None) -> dict[str, str]:
+    env = {
+        "ANTHROPIC_API_KEY": "sk-ant-test-key",
+        "DEFAULT_MODEL": "anthropic/claude-3-5-sonnet-20241022",
+        "SUMMARIZATION_MODEL": "anthropic/claude-3-5-haiku-20241022",
+        "DATABASE_URL": "postgresql://test:test@localhost:5432/test",
+    }
+    with patch.dict(os.environ, env, clear=False):
+        yield env
 
-@pytest.fixture(autouse=True)
-def clean_context() -> Generator[None, None, None]:
-    """Clean up context variables before and after each test."""
-    from executive_assistant.storage.thread_storage import clear_context, set_thread_id
 
-    # Clean before
-    clear_context()
-    set_thread_id("")
+@pytest.fixture
+def mock_env_with_multiple_providers(clean_env: None) -> dict[str, str]:
+    env = {
+        "OPENAI_API_KEY": "sk-openai-key",
+        "ANTHROPIC_API_KEY": "sk-ant-key",
+        "GOOGLE_API_KEY": "google-key",
+        "GROQ_API_KEY": "gsk-groq-key",
+        "DEFAULT_MODEL": "openai/gpt-4o",
+        "SUMMARIZATION_MODEL": "groq/llama-3.3-70b-versatile",
+        "DATABASE_URL": "postgresql://test:test@localhost:5432/test",
+    }
+    with patch.dict(os.environ, env, clear=False):
+        yield env
 
-    yield
 
-    # Clean after
-    clear_context()
-    set_thread_id("")
+@pytest.fixture
+def mock_env_with_langfuse(clean_env: None) -> dict[str, str]:
+    env = {
+        "OPENAI_API_KEY": "sk-test-key",
+        "LANGFUSE_PUBLIC_KEY": "pk-test",
+        "LANGFUSE_SECRET_KEY": "sk-test",
+        "LANGFUSE_HOST": "https://cloud.langfuse.com",
+        "LANGFUSE_ENABLED": "true",
+        "DEFAULT_MODEL": "openai/gpt-4o",
+        "SUMMARIZATION_MODEL": "openai/gpt-4o-mini",
+        "DATABASE_URL": "postgresql://test:test@localhost:5432/test",
+    }
+    with patch.dict(os.environ, env, clear=False):
+        yield env
+
+
+@pytest.fixture
+def temp_data_path(tmp_path: Path) -> Path:
+    data_path = tmp_path / "data"
+    data_path.mkdir(parents=True, exist_ok=True)
+    return data_path
+
+
+@pytest.fixture
+def temp_user_path(temp_data_path: Path) -> Path:
+    user_path = temp_data_path / "users" / "test-user-123"
+    user_path.mkdir(parents=True, exist_ok=True)
+    return user_path

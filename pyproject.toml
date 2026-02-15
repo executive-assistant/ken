@@ -1,106 +1,141 @@
 [project]
-name = "executive_assistant"
+name = "executive-assistant"
 version = "0.1.0"
-description = "Multi-channel AI agent platform with LangGraph ReAct agent"
+description = "Enterprise-ready personal agent with multi-LLM support"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+authors = [{ name = "Open Assistant Lab" }]
+keywords = ["agent", "llm", "langchain", "ai", "assistant", "deep-agents"]
+
 dependencies = [
-    "anthropic>=0.76.0",
-    "asyncpg>=0.30.0",
-    "duckdb>=1.1.0",
-    "pyyaml>=6.0.0",
-    "pandas>=2.2.0",
-    "fastapi>=0.128.0",
-    "langchain>=1.2.7",
-    "langchain-anthropic>=1.3.1",
-    "langchain-core>=1.2.7",
-    "langchain-google-genai>=4.0.0",
-    "langchain-mcp-adapters>=0.2.1",
-    "langchain-ollama>=1.0.1",
-    "langchain-openai>=1.1.7",
+    "langchain>=0.3.0",
+    "langchain-openai>=1.1.9",
+    "langchain-anthropic>=1.3.3",
+    "langchain-google-genai>=4.2.0",
+    "langchain-groq>=1.1.2",
+    "langchain-mistralai>=0.2.0",
+    "langchain-cohere>=0.4.0",
     "langchain-qwq>=0.1.0",
-    "langfuse>=3.0.0",
-    # Google Workspace integration
-    "google-api-python-client>=2.189.0",
-    "google-auth-oauthlib>=1.2.3",
-    "google-auth>=2.20.0",
-    "langgraph>=1.0.7",
-    "langgraph-prebuilt>=1.0.7",
-    "langgraph-api>=0.7.13",
-    "langgraph-checkpoint>=4.0.0",
-    "langgraph-checkpoint-postgres>=3.0.4",
-    "langgraph-cli>=0.4.12",
-    "langgraph-runtime-inmem>=0.23.1",
-    "openai>=2.15.0",
-    "psycopg-pool>=3.3.0",
-    "pydantic>=2.12.5",
+    "langchain-deepseek>=0.1.0",
+    "langchain-community>=0.3.0",
+    "langchain-ollama>=0.3.0",
+    "langgraph>=0.3.0",
+    "langgraph-checkpoint-postgres>=2.0.0",
+    "deepagents>=0.4.1",
+    "deepagents-acp>=0.0.1",
+    "langfuse>=2.0.0",
+    "pydantic>=2.10.0",
     "pydantic-settings>=2.12.0",
-    "python-dotenv>=1.2.1",
-    "python-telegram-bot>=22.5",
-    "apscheduler>=3.10.0",
-    "uvicorn[standard]>=0.32.0",
-    "zhipuai",
-    "pypdf>=6.6.0",
-    "dateparser>=1.2.0",
-    "rapidfuzz>=3.6.0",
-    "loguru>=0.7.2",
-    "httpx>=0.27.0",
-    "paddleocr>=3.3.2; sys_platform == 'linux' and platform_machine == 'x86_64'",
-    "paddlepaddle>=3.3.0; sys_platform == 'linux' and platform_machine == 'x86_64'",
-    "pymupdf>=1.24.0",
-    "python-docx>=1.1.2",
-    "python-pptx>=1.0.2",
-    "openpyxl>=3.1.2",
-    "markdown-it-py>=3.0.0",
-    "beautifulsoup4>=4.12.3",
-    "lxml>=5.3.0",
-    "readability-lxml>=0.8.1",
-    "pillow>=10.4.0",
-    "reportlab>=4.2.5",
-    "html5lib>=1.1",
-    "psycopg[binary]>=3.2.0",
-    # For local embeddings (KB backend)
-    "sentence-transformers>=3.0.0",
-    "huggingface-hub>=0.34.0,<1.0",
-    "temporalio>=1.21.1",
-    # LanceDB vector store (alternative to DuckDB)
-    "lancedb>=0.15.0",
-    "pyarrow>=14.0.0",
-    "psutil>=6.0.0",
-    "surya-ocr>=0.6.0",
-    "playwright",
-    "zen-engine>=0.51.0",
-    "mcp>=1.19.0",
-    "langchain-deepseek>=1.0.1",
+    "python-dotenv>=1.0.0",
+    "asyncpg>=0.30.0",
+    "psycopg[binary,pool]>=3.2.0",
+    "lancedb>=0.29.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.40.0",
+    "typer>=0.15.0",
+    "python-telegram-bot>=22.0.0",
+    "httpx>=0.28.0",
+    "aiosqlite>=0.21.0",
+    "sqlalchemy>=2.0.0",
+    "tavily-python>=0.5.0",
+    "ollama>=0.4.0",
 ]
 
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
-    "pytest>=9.0.2",
-    "pytest-asyncio>=1.3.0",
-    "pytest-recording>=0.13.2",
-    "vcrpy>=6.0.1",
-    "agentevals>=0.0.9",
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.25.0",
+    "pytest-cov>=6.0.0",
+    "respx>=0.22.0",
+    "ruff>=0.9.0",
+    "mypy>=1.14.0",
 ]
+
+aws = [
+    "boto3>=1.36.0",
+]
+
+[project.scripts]
+ea = "src.cli.main:app"
+ea-api = "src.api.main:run_server"
+ea-acp = "src.acp.server:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/executive_assistant"]
-
-[project.scripts]
-executive_assistant = "executive_assistant.main:run_main"
-executive_assistant-dev = "executive_assistant.dev_server:main"
+packages = ["src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-norecursedirs = ["tests/poc_archive"]
-markers = [
-    "vcr: record/replay HTTP via VCR",
-    "langchain_integration: live LLM integration tests",
-    "postgres: requires PostgreSQL",
-]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short --strict-markers"
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "slow: Slow running tests",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "ARG",    # flake8-unused-arguments
+    "SIM",    # flake8-simplify
+    "TCH",    # flake8-type-checking
+    "PTH",    # flake8-use-pathlib
+    "ERA",    # eradicate
+    "RUF",    # Ruff-specific rules
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults
+    "B904",   # raise without from inside except
+    "ARG001", # unused function argument
+    "ARG002", # unused method argument
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+omit = ["*/tests/*", "*/__pycache__/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
